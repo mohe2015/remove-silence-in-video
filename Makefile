@@ -1,4 +1,4 @@
-all: run
+all: compile
 
 # sudo pacman -S libc++
 # https://clang.llvm.org/docs/StandardCPlusPlusModules.html
@@ -10,6 +10,9 @@ compile:
 
 format:
 	clang-format -i lib.cpp main.cpp
+
+compile-commands: clean
+	bear -- make
 
 clean:
 	rm -f main *.pcm *.o

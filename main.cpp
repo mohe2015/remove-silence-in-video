@@ -98,21 +98,15 @@ export int main() {
     int ret;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
-    const char *filename = "file:test.mfp4";
-    std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)>
-        av_format_context = my_avformat_open_input(filename);
+    std::string filename = "file:test.mfp4";
+    MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
-    if ((ret = avformat_find_stream_info(av_format_context.get(), NULL)) < 0) {
-      av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
-      return ret;
-    }
+    my_avformat_find_stream_info(av_format_context);
 
-    for (unsigned int i = 0; i < av_format_context->nb_streams; i++) {
-      av_dump_format(av_format_context.get(), i, filename, 0);
-    }
+    /*for (unsigned int i = 0; i < av_format_context->nb_streams; i++) {
+      av_dump_format(av_format_context.get(), i, filename.c_str(), 0);
+    }*/
 
-    const AVCodec *audio_codec;
-    const AVCodec *video_codec;
     AVCodecContext *audio_codec_ctx;
     AVCodecContext *video_codec_ctx;
 
@@ -120,37 +114,27 @@ export int main() {
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
 
     // TODO FIXME maybe use same for audio and video stream
-    ret = av_find_best_stream(av_format_context.get(), AVMEDIA_TYPE_AUDIO, -1,
-                              -1, &audio_codec, 0);
-    if (ret < 0) {
-      av_log(NULL, AV_LOG_ERROR,
-             "Cannot find an audio stream in the input file\n");
-      return ret;
-    }
-    int audio_stream_index = ret;
+    MyAVCodec audio_codec;
+    int audio_stream_index;
+    std::tie(audio_stream_index, audio_codec) = my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO);
 
-    ret = av_find_best_stream(av_format_context.get(), AVMEDIA_TYPE_VIDEO, -1,
-                              -1, &video_codec, 0);
-    if (ret < 0) {
-      av_log(NULL, AV_LOG_ERROR,
-             "Cannot find an video stream in the input file\n");
-      return ret;
-    }
-    int video_stream_index = ret;
+    MyAVCodec video_codec;
+    int video_stream_index;
+    std::tie(video_stream_index, video_codec) = my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO);
 
     std::cout << "audio stream: " << audio_stream_index
               << " video stream: " << video_stream_index << std::endl;
 
-    audio_codec_ctx = avcodec_alloc_context3(audio_codec);
+    audio_codec_ctx = avcodec_alloc_context3(audio_codec.get());
     if (!audio_codec_ctx) {
       av_log(NULL, AV_LOG_ERROR, "could not allocate audio codec context\n");
-      return ret;
+      return 1;
     }
 
-    video_codec_ctx = avcodec_alloc_context3(video_codec);
+    video_codec_ctx = avcodec_alloc_context3(video_codec.get());
     if (!video_codec_ctx) {
       av_log(NULL, AV_LOG_ERROR, "could not allocate video codec context\n");
-      return ret;
+      return 1;
     }
 
     ret = avcodec_parameters_to_context(
@@ -169,12 +153,12 @@ export int main() {
       return ret;
     }
 
-    if (avcodec_open2(audio_codec_ctx, audio_codec, NULL) < 0) {
+    if (avcodec_open2(audio_codec_ctx, audio_codec.get(), NULL) < 0) {
       av_log(NULL, AV_LOG_ERROR, "could not open audio decoder\n");
       return ret;
     }
 
-    if (avcodec_open2(video_codec_ctx, video_codec, NULL) < 0) {
+    if (avcodec_open2(video_codec_ctx, video_codec.get(), NULL) < 0) {
       av_log(NULL, AV_LOG_ERROR, "could not open video decoder\n");
       return ret;
     }

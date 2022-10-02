@@ -2,3 +2,5 @@ main
 *.mp4
 *.pcm
 *.o
+.cache
+*.json
