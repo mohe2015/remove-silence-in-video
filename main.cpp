@@ -25,22 +25,27 @@ int main() {
         av_dump_format(av_format_context, i, filename, 0);
     }
 
+    int last_position = 0;
     int position = 0;
+    while (true) {
+        // AVFMT_SEEK_TO_PTS
 
-    // apparently because of b-keyframes frames would not need to be in order (pts vs dts) so maybe
-    // this method is better than manually?
-    if (avformat_seek_file(av_format_context, 0, std::numeric_limits<int64_t>::min(), position, std::numeric_limits<int64_t>::max(), 0) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to seek\n");
-        return ret;
-    }
-    AVPacket* av_packet = av_packet_alloc();
-    if (av_read_frame(av_format_context, av_packet) != 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to read frame\n");
-        return ret;
-    }
+        // apparently because of b-keyframes frames would not need to be in order (pts vs dts) so maybe
+        // this method is better than manually?
+        if (avformat_seek_file(av_format_context, 0, last_position, position, std::numeric_limits<int64_t>::max(), 0) < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to seek\n");
+            return ret;
+        }
+        AVPacket* av_packet = av_packet_alloc();
+        if (av_read_frame(av_format_context, av_packet) != 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to read frame\n");
+            return ret;
+        }
 
-    std::cout << "position: " << av_packet->dts << std::endl;
-    position = av_packet->dts + 1;
+        std::cout << "position: " << av_packet->dts << std::endl;
+        last_position = position + 1;
+        position = av_packet->dts + 1;
+    }
 
     /*
     // AVPacketList
