@@ -18,7 +18,7 @@ extern "C" {
 
 export module lib;
 
-void my_avformat_close_input(AVFormatContext* av_format_context) {
+export void my_avformat_close_input(AVFormatContext* av_format_context) {
     avformat_close_input(&av_format_context);
 }
 

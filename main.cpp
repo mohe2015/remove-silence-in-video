@@ -1,3 +1,23 @@
+module;
+
+
+extern "C" {
+    #include <libavformat/avformat.h>
+    #include <libavcodec/avcodec.h>
+    #include <libavfilter/avfilter.h>
+    #include <libavfilter/buffersrc.h>
+    #include <libavfilter/buffersink.h>
+    #include <libavutil/avutil.h>
+}
+
+#include <string>
+#include <memory>
+#include <iostream>
+#include <limits>
+#include <tuple>
+#include <memory>
+
+export module main;
 import lib;
 
 // https://ffmpeg.org/
@@ -70,23 +90,19 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
 }
 
 int main() {
+    int ret;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
     const char    *filename = "file:test.mp4";
     std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)> av_format_context = my_avformat_open_input(filename);
 
-    if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
-        return ret;
-    }
-
-     if ((ret = avformat_find_stream_info(av_format_context, NULL)) < 0) {
+     if ((ret = avformat_find_stream_info(av_format_context.get(), NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
         return ret;
     }
 
     for (int i = 0; i < av_format_context->nb_streams; i++) {
-        av_dump_format(av_format_context, i, filename, 0);
+        av_dump_format(av_format_context.get(), i, filename, 0);
     }
 
     const AVCodec *audio_codec;
@@ -98,14 +114,14 @@ int main() {
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
 
     // TODO FIXME maybe use same for audio and video stream
-    ret = av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, &audio_codec, 0);
+    ret = av_find_best_stream(av_format_context.get(), AVMEDIA_TYPE_AUDIO, -1, -1, &audio_codec, 0);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot find an audio stream in the input file\n");
         return ret;
     }
     int audio_stream_index = ret;
 
-    ret = av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO, -1, -1, &video_codec, 0);
+    ret = av_find_best_stream(av_format_context.get(), AVMEDIA_TYPE_VIDEO, -1, -1, &video_codec, 0);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot find an video stream in the input file\n");
         return ret;
@@ -152,7 +168,7 @@ int main() {
 
     AVFilterContext *abuffersrc_ctx;
     AVFilterContext *abuffersink_ctx;
-    std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(av_format_context, audio_codec_ctx, audio_stream_index);
+    std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(av_format_context.get(), audio_codec_ctx, audio_stream_index);
 
     AVFrame *audio_filter_frame = av_frame_alloc();
 
@@ -163,7 +179,7 @@ int main() {
 
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
 
-    while (av_read_frame(av_format_context, packet) == 0) {
+    while (av_read_frame(av_format_context.get(), packet) == 0) {
         //std::cout << "Read packet" << std::endl;
 
         if (packet->stream_index == video_stream_index) {
@@ -279,9 +295,6 @@ int main() {
         position = av_packet->dts + 1;
     }
 */
-
-    avformat_close_input(&av_format_context);
-
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
    
