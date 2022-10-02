@@ -137,7 +137,13 @@ int main() {
 
     ret = avcodec_parameters_to_context(audio_codec_ctx, av_format_context->streams[audio_stream_index]->codecpar);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "failed to add parameters to context\n");
+        av_log(NULL, AV_LOG_ERROR, "failed to add parameters to audio context\n");
+        return ret;
+    }
+
+    ret = avcodec_parameters_to_context(video_codec_ctx, av_format_context->streams[video_stream_index]->codecpar);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "failed to add parameters to video context\n");
         return ret;
     }
  
