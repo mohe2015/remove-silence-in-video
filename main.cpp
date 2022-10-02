@@ -4,6 +4,7 @@ extern "C" {
     #include <libavfilter/avfilter.h>
     #include <libavfilter/buffersrc.h>
     #include <libavfilter/buffersink.h>
+    #include <libavutil/avutil.h>
 }
 #include <iostream>
 #include <limits>
@@ -153,7 +154,7 @@ int main() {
     AVPacket* packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
     while (av_read_frame(av_format_context, packet) == 0) {
-        std::cout << "Read packet" << std::endl;
+        //std::cout << "Read packet" << std::endl;
 
         // TODO FIXMe handle end of file correctly (flushing)
         if (packet->stream_index == audio_stream_index) {
@@ -172,7 +173,7 @@ int main() {
                     return ret;
                 }
 
-                std::cout << "Decoded" << std::endl;
+                //std::cout << "Decoded" << std::endl;
  
                 if (ret >= 0) {
                     // push the audio data from decoded frame into the filtergraph
@@ -190,7 +191,11 @@ int main() {
                             exit(1);
                         
                         // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
-                        //
+                        char* buffer;
+                        av_dict_get_string(filt_frame->metadata, &buffer, '=', ';');
+                        std::cout << buffer << std::endl;
+
+                        // "lavfi.silence_start"
 
                         av_frame_unref(filt_frame);
                     }
