@@ -34,6 +34,8 @@ int main() {
 
     // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
+
+    // TODO FIXME maybe use same for audio and video stream
     ret = av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, &audio_codec, 0);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot find an audio stream in the input file\n");
@@ -59,6 +61,77 @@ int main() {
     }
 
     std::cout << "works!" << std::endl;
+
+     // AVPacketList
+    AVPacket* packet = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
+    while (av_read_frame(av_format_context, packet) == 0) {
+        std::cout << "Read packet" << std::endl;
+
+        // TODO FIXMe handle end of file correctly (flushing)
+        if (packet->stream_index == audio_stream_index) {
+            ret = avcodec_send_packet(audio_codec_ctx, packet);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_ERROR, "Error while sending a packet to the decoder\n");
+                break;
+            }
+
+            while (ret >= 0) {
+                ret = avcodec_receive_frame(audio_codec_ctx, frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                    break;
+                } else if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Error while receiving a frame from the decoder\n");
+                    return ret;
+                }
+
+                std::cout << "Decoded" << std::endl;
+ 
+                if (ret >= 0) {
+                    // push the audio data from decoded frame into the filtergraph
+                    /*if (av_buffersrc_add_frame_flags(buffersrc_ctx, frame, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
+                        av_log(NULL, AV_LOG_ERROR, "Error while feeding the audio filtergraph\n");
+                        break;
+                    }
+ 
+                    // pull filtered audio from the filtergraph 
+                    while (1) {
+                        ret = av_buffersink_get_frame(buffersink_ctx, filt_frame);
+                        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                            break;
+                        if (ret < 0)
+                            goto end;
+                        print_frame(filt_frame);
+                        av_frame_unref(filt_frame);
+                    }*/
+                    av_frame_unref(frame);
+                }
+            }
+        }
+    }
+
+        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
+
+        // I think to properly get the locations of keyframes etc we need to read the whole file anyways?
+
+        // av_seek_frame
+        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
+        
+        // find I-Frames
+
+        // I think the skip frames option is the most efficient way?
+
+        // https://ffmpeg.org/doxygen/trunk/structAVCodecParserContext.html#ac115e048335e4a7f1d85541cebcf2013
+        // https://ffmpeg.org/doxygen/trunk/structAVIndexEntry.html
+        // https://ffmpeg.org/doxygen/trunk/group__lavu__picture.html#gae6cbcab1f70d8e476757f1c1f5a0a78e
+
+        // https://ffmpeg.org/doxygen/trunk/group__lavc__encdec.html
+        // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#gga352363bce7d3ed82c101b3bc001d1c16aabee31ca5c7c140d3a84b848164eeaf8
+        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga3b40fc8d2fda6992ae6ea2567d71ba30
+        // http://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga75603d7c2b8adf5829f4fd2fb860168f
+        // http://ffmpeg.org/doxygen/trunk/avformat_8h.html#a23159bdc0b27ccf964072e30d6cc4559
+
+    av_packet_unref(packet);
 
     // https://ffmpeg.org/doxygen/trunk/structAVCodecContext.html
 
@@ -98,38 +171,6 @@ int main() {
         position = av_packet->dts + 1;
     }
 */
-
-    /*
-    // AVPacketList
-    AVPacket* av_packet = av_packet_alloc();
-    while (av_read_frame(av_format_context, av_packet) == 0) {
-        //std::cout << "Read packet" << std::endl;
-
-
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
-
-        // I think to properly get the locations of keyframes etc we need to read the whole file anyways?
-
-        // av_seek_frame
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
-        
-        // find I-Frames
-
-        // I think the skip frames option is the most efficient way?
-
-        // https://ffmpeg.org/doxygen/trunk/structAVCodecParserContext.html#ac115e048335e4a7f1d85541cebcf2013
-        // https://ffmpeg.org/doxygen/trunk/structAVIndexEntry.html
-        // https://ffmpeg.org/doxygen/trunk/group__lavu__picture.html#gae6cbcab1f70d8e476757f1c1f5a0a78e
-
-        // https://ffmpeg.org/doxygen/trunk/group__lavc__encdec.html
-        // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#gga352363bce7d3ed82c101b3bc001d1c16aabee31ca5c7c140d3a84b848164eeaf8
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga3b40fc8d2fda6992ae6ea2567d71ba30
-        // http://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga75603d7c2b8adf5829f4fd2fb860168f
-        // http://ffmpeg.org/doxygen/trunk/avformat_8h.html#a23159bdc0b27ccf964072e30d6cc4559
-
-        av_packet_unref(av_packet);
-    }*/
-
 
     avformat_close_input(&av_format_context);
 
