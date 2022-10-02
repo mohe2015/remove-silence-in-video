@@ -8,7 +8,10 @@ extern "C" {
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
-int build_filter_tree() {
+int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
+    char args[512]; // uff
+    AVRational time_base = format_context->streams[audio_stream_index]->time_base;
+
     const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
     const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
@@ -24,8 +27,17 @@ int build_filter_tree() {
         return AVERROR(ENOMEM);
     }
 
-    int ret = avfilter_graph_create_filter(&buffersrc_ctx, abuffersrc, "in",
-                                       NULL, NULL, filter_graph);
+     if (audio_codec_context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
+        av_channel_layout_default(&audio_codec_context->ch_layout, audio_codec_context->ch_layout.nb_channels);
+     }
+    int ret = snprintf(args, sizeof(args),
+            "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=",
+             time_base.num, time_base.den, audio_codec_context->sample_rate,
+             av_get_sample_fmt_name(audio_codec_context->sample_fmt));
+    av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret, sizeof(args) - ret);
+
+    ret = avfilter_graph_create_filter(&buffersrc_ctx, abuffersrc, "in",
+                                       args, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
         return ret;
@@ -89,7 +101,7 @@ int main() {
 
     std::cout << "works!" << std::endl;
 
-    if (build_filter_tree() != 0) {
+    if (build_filter_tree(av_format_context, audio_codec_ctx, audio_stream_index) != 0) {
         std::cout << "failed to build filter tree!" << std::endl;
         return 1;
     }
