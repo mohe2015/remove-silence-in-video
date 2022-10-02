@@ -1,14 +1,5 @@
-extern "C" {
-    #include <libavformat/avformat.h>
-    #include <libavcodec/avcodec.h>
-    #include <libavfilter/avfilter.h>
-    #include <libavfilter/buffersrc.h>
-    #include <libavfilter/buffersink.h>
-    #include <libavutil/avutil.h>
-}
-#include <iostream>
-#include <limits>
-#include <tuple>
+import lib;
+
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
@@ -82,8 +73,8 @@ int main() {
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
     const char    *filename = "file:test.mp4";
-    AVFormatContext *av_format_context = NULL;
-    int ret = avformat_open_input(&av_format_context, filename, NULL, NULL);
+    std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)> av_format_context = my_avformat_open_input(filename);
+
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
         return ret;
