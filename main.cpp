@@ -16,12 +16,10 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
     char args[512]; // uff
     AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
-    //const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
     const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
     AVFilterContext *abuffersrc_ctx;
     AVFilterContext *abuffersink_ctx;
-    //AVFilterContext *silencedetect_context;
 
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
@@ -61,12 +59,6 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
     outputs->pad_idx    = 0;
     outputs->next       = NULL;
  
-    /*
-     * The buffer sink input must be connected to the output pad of
-     * the last filter described by filters_descr; since the last
-     * filter output label is not specified, it is set to "out" by
-     * default.
-     */
     inputs->name       = av_strdup("out");
     inputs->filter_ctx = abuffersink_ctx;
     inputs->pad_idx    = 0;
@@ -83,17 +75,12 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
         exit(1);
     }
 
-    // set_meta
-    // https://github.com/FFmpeg/FFmpeg/blob/6f8b8e633205ab690a6a33b139f4e95828e4892f/libavfilter/af_silencedetect.c
-
     return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
 int main() {
-    // first use libavformat to demux the file
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
-    // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gac05d61a2b492ae3985c658f34622c19d
     const char    *filename = "file:test.mp4";
     AVFormatContext *av_format_context = NULL;
     int ret = avformat_open_input(&av_format_context, filename, NULL, NULL);
@@ -112,7 +99,9 @@ int main() {
     }
 
     const AVCodec *audio_codec;
+    const AVCodec *video_codec;
     AVCodecContext *audio_codec_ctx;
+    AVCodecContext *video_codec_ctx;
 
     // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
@@ -124,10 +113,25 @@ int main() {
         return ret;
     }
     int audio_stream_index = ret;
+
+    ret = av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO, -1, -1, &video_codec, 0);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot find an video stream in the input file\n");
+        return ret;
+    }
+    int video_stream_index = ret;
+
+    std::cout << "audio stream: " << audio_stream_index << " video stream: " << video_stream_index << std::endl;
     
     audio_codec_ctx = avcodec_alloc_context3(audio_codec);
     if (!audio_codec_ctx) {
-        av_log(NULL, AV_LOG_ERROR, "could not allocate coded context\n");
+        av_log(NULL, AV_LOG_ERROR, "could not allocate audio codec context\n");
+        return ret;
+    }
+
+    video_codec_ctx = avcodec_alloc_context3(video_codec);
+    if (!video_codec_ctx) {
+        av_log(NULL, AV_LOG_ERROR, "could not allocate video codec context\n");
         return ret;
     }
 
@@ -138,7 +142,12 @@ int main() {
     }
  
     if (avcodec_open2(audio_codec_ctx, audio_codec, NULL) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "could not open decoder\n");
+        av_log(NULL, AV_LOG_ERROR, "could not open audio decoder\n");
+        return ret;
+    }
+
+     if (avcodec_open2(video_codec_ctx, video_codec, NULL) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "could not open video decoder\n");
         return ret;
     }
 
@@ -148,24 +157,52 @@ int main() {
     AVFilterContext *abuffersink_ctx;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(av_format_context, audio_codec_ctx, audio_stream_index);
 
-    AVFrame *filt_frame = av_frame_alloc();
+    AVFrame *audio_filter_frame = av_frame_alloc();
 
      // AVPacketList
     AVPacket* packet = av_packet_alloc();
-    AVFrame *frame = av_frame_alloc();
+    AVFrame *audio_frame = av_frame_alloc();
+    AVFrame *video_frame = av_frame_alloc();
     while (av_read_frame(av_format_context, packet) == 0) {
         //std::cout << "Read packet" << std::endl;
+
+        if (packet->stream_index == video_stream_index) {
+            ret = avcodec_send_packet(video_codec_ctx, packet);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_ERROR, "Error while sending a packet to the video decoder\n");
+                break;
+            }
+
+            while (ret >= 0) {
+                ret = avcodec_receive_frame(audio_codec_ctx, audio_frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                    break;
+                } else if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Error while receiving a frame from the decoder\n");
+                    return ret;
+                }
+
+                std::cout << "Video decoded" << std::endl;
+
+                if (ret >= 0) {
+                    
+
+
+                    av_frame_unref(audio_frame);
+                }
+            }
+        }
 
         // TODO FIXMe handle end of file correctly (flushing)
         if (packet->stream_index == audio_stream_index) {
             ret = avcodec_send_packet(audio_codec_ctx, packet);
             if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Error while sending a packet to the decoder\n");
+                av_log(NULL, AV_LOG_ERROR, "Error while sending a packet to the audio decoder\n");
                 break;
             }
 
             while (ret >= 0) {
-                ret = avcodec_receive_frame(audio_codec_ctx, frame);
+                ret = avcodec_receive_frame(audio_codec_ctx, audio_frame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                     break;
                 } else if (ret < 0) {
@@ -177,14 +214,14 @@ int main() {
  
                 if (ret >= 0) {
                     // push the audio data from decoded frame into the filtergraph
-                    if (av_buffersrc_add_frame_flags(abuffersrc_ctx, frame, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
+                    if (av_buffersrc_add_frame_flags(abuffersrc_ctx, audio_frame, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
                         av_log(NULL, AV_LOG_ERROR, "Error while feeding the audio filtergraph\n");
                         break;
                     }
  
                     // pull filtered audio from the filtergraph 
                     while (1) {
-                        ret = av_buffersink_get_frame(abuffersink_ctx, filt_frame);
+                        ret = av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame);
                         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
                             break;
                         if (ret < 0)
@@ -196,7 +233,7 @@ int main() {
                         
                         // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
                         char* buffer;
-                        if (av_dict_get_string(filt_frame->metadata, &buffer, '=', ';') < 0) {
+                        if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=', ';') < 0) {
                              av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
                             break;
                         }
@@ -204,49 +241,16 @@ int main() {
 
                         // "lavfi.silence_start"
 
-                        av_frame_unref(filt_frame);
+                        av_frame_unref(audio_filter_frame);
                     }
-                    av_frame_unref(frame);
+                    av_frame_unref(audio_frame);
                 }
             }
         }
     }
 
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
-
-        // I think to properly get the locations of keyframes etc we need to read the whole file anyways?
-
-        // av_seek_frame
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#gaa23f7619d8d4ea0857065d9979c75ac8
-        
-        // find I-Frames
-
-        // I think the skip frames option is the most efficient way?
-
-        // https://ffmpeg.org/doxygen/trunk/structAVCodecParserContext.html#ac115e048335e4a7f1d85541cebcf2013
-        // https://ffmpeg.org/doxygen/trunk/structAVIndexEntry.html
-        // https://ffmpeg.org/doxygen/trunk/group__lavu__picture.html#gae6cbcab1f70d8e476757f1c1f5a0a78e
-
-        // https://ffmpeg.org/doxygen/trunk/group__lavc__encdec.html
-        // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#gga352363bce7d3ed82c101b3bc001d1c16aabee31ca5c7c140d3a84b848164eeaf8
-        // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga3b40fc8d2fda6992ae6ea2567d71ba30
-        // http://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga75603d7c2b8adf5829f4fd2fb860168f
-        // http://ffmpeg.org/doxygen/trunk/avformat_8h.html#a23159bdc0b27ccf964072e30d6cc4559
 
     av_packet_unref(packet);
-
-    // https://ffmpeg.org/doxygen/trunk/structAVCodecContext.html
-
-
-    // https://ffmpeg.org/doxygen/trunk/structSilenceDetectContext.html#a8a837af9608233d8988f7ac8f867c584
-    // silencedetect
-
-    // libavfilter
-    // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a110
-    // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#a58
-
-    // avcodec_find_decoder
-    // avcodec_send_packet
 
 /*
     int last_position = 0;
@@ -278,17 +282,11 @@ int main() {
 
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
-    // the problem with partial keyframe stuff is we probably need to find all keyframes once ahead
-    // to know from where on we need to reencode. maybe in that pass also do audio analysis
-    // probably just store the keyframe locations to use in second pass?
-
+   
     // https://ffmpeg.org/ffmpeg-filters.html#segment_002c-asegment
 
     // https://ffmpeg.org/ffmpeg-filters.html
-    // aspectralstats
-    // astats
     // atrim
-    // silencedetect
 
     // https://ffmpeg.org/ffmpeg-filters.html#Timeline-editing
 
