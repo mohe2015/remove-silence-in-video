@@ -8,6 +8,9 @@ compile:
 	clang++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. lib.pcm -c -o lib.o
 	clang++ -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.o lib.o -lavformat -lavcodec -lavutil -lavfilter -o main
 
+format:
+	clang-format -i lib.cpp main.cpp
+
 clean:
 	rm -f main *.pcm *.o
 
