@@ -15,10 +15,13 @@ int main() {
     const char    *filename = "file:test.mp4";
     AVFormatContext *av_format_context = NULL;
     int ret = avformat_open_input(&av_format_context, filename, NULL, NULL);
-    // TODO avformat_find_stream_info()
-    // TODO av_find_best_stream
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
+        return ret;
+    }
+
+     if ((ret = avformat_find_stream_info(av_format_context, NULL)) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
         return ret;
     }
 
@@ -37,8 +40,7 @@ int main() {
         return ret;
     }
     int audio_stream_index = ret;
-
-     /* Find a decoder for the audio stream. */
+/*
     if (!(input_codec = avcodec_find_decoder(stream->codecpar->codec_id))) {
         fprintf(stderr, "Could not find input codec\n");
         avformat_close_input(input_format_context);
@@ -51,7 +53,6 @@ int main() {
         exit(1);
     }
 
-      /* Initialize the stream parameters with demuxer information. */
     error = avcodec_parameters_to_context(avctx, stream->codecpar);
     if (error < 0) {
         avformat_close_input(input_format_context);
@@ -59,14 +60,13 @@ int main() {
         return error;
     }
  
-    /* open it */
     if (avcodec_open2(c, audio_codec, NULL) < 0) {
         fprintf(stderr, "Could not open codec\n");
         exit(1);
     }
 
     avctx->pkt_timebase = stream->time_base;
-
+*/
     // https://ffmpeg.org/doxygen/trunk/structAVCodecContext.html
 
 
