@@ -72,7 +72,7 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
     inputs->pad_idx    = 0;
     inputs->next       = NULL;
  
-    if ((ret = avfilter_graph_parse_ptr(filter_graph, "silencedetect",
+    if ((ret = avfilter_graph_parse_ptr(filter_graph, "silencedetect=noise=-40dB:duration=1",
                                         &inputs, &outputs, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot parse filter graph\n");
         exit(1);
@@ -190,7 +190,9 @@ int main() {
                         if (ret < 0)
                             exit(1);
 
-                        std::cout << "entries: " << av_dict_count(filt_frame->metadata) << std::endl;
+                        // ffmpeg -i test.mp4 -af "silencedetect=noise=-50dB:duration=2" -f null -
+
+                        //std::cout << "entries: " << av_dict_count(filt_frame->metadata) << std::endl;
                         
                         // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
                         char* buffer;
@@ -198,7 +200,7 @@ int main() {
                              av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
                             break;
                         }
-                        std::cout << buffer << std::endl;
+                        std::cout << buffer << std::flush;
 
                         // "lavfi.silence_start"
 
