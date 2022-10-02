@@ -100,7 +100,7 @@ export int main() {
         return ret;
     }
 
-    for (int i = 0; i < av_format_context->nb_streams; i++) {
+    for (unsigned int i = 0; i < av_format_context->nb_streams; i++) {
         av_dump_format(av_format_context.get(), i, filename, 0);
     }
 
