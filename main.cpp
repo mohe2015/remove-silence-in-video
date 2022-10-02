@@ -1,5 +1,6 @@
 extern "C" {
     #include <libavformat/avformat.h>
+    #include <libavcodec/avcodec.h>
 }
 #include <iostream>
 #include <limits>
@@ -25,9 +26,66 @@ int main() {
         av_dump_format(av_format_context, i, filename, 0);
     }
 
+    const AVCodec *audio_codec;
+    const AVCodecContext *audio_codec_ctx;
+
+    // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
+    // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
+    ret = av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, &audio_codec, 0);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot find an audio stream in the input file\n");
+        return ret;
+    }
+    int audio_stream_index = ret;
+
+     /* Find a decoder for the audio stream. */
+    if (!(input_codec = avcodec_find_decoder(stream->codecpar->codec_id))) {
+        fprintf(stderr, "Could not find input codec\n");
+        avformat_close_input(input_format_context);
+        return AVERROR_EXIT;
+    }
+    
+    audio_codec_ctx = avcodec_alloc_context3(audio_codec);
+    if (!c) {
+        fprintf(stderr, "Could not allocate audio codec context\n");
+        exit(1);
+    }
+
+      /* Initialize the stream parameters with demuxer information. */
+    error = avcodec_parameters_to_context(avctx, stream->codecpar);
+    if (error < 0) {
+        avformat_close_input(input_format_context);
+        avcodec_free_context(&avctx);
+        return error;
+    }
+ 
+    /* open it */
+    if (avcodec_open2(c, audio_codec, NULL) < 0) {
+        fprintf(stderr, "Could not open codec\n");
+        exit(1);
+    }
+
+    avctx->pkt_timebase = stream->time_base;
+
+    // https://ffmpeg.org/doxygen/trunk/structAVCodecContext.html
+
+
+    // https://ffmpeg.org/doxygen/trunk/structSilenceDetectContext.html#a8a837af9608233d8988f7ac8f867c584
+    // silencedetect
+
+    // libavfilter
+    // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a110
+    // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#a58
+
+    // avcodec_find_decoder
+    // avcodec_send_packet
+
+/*
     int last_position = 0;
     int position = 0;
     while (true) {
+        // maybe still read the whole file to do the audio analysis as the data is probably combined in the stream?
+
         // AVFMT_SEEK_TO_PTS
 
         // apparently because of b-keyframes frames would not need to be in order (pts vs dts) so maybe
@@ -46,6 +104,7 @@ int main() {
         last_position = position + 1;
         position = av_packet->dts + 1;
     }
+*/
 
     /*
     // AVPacketList
@@ -93,9 +152,7 @@ int main() {
     // aspectralstats
     // astats
     // atrim
-    // replaygain
     // silencedetect
-    // silenceremove
 
     // https://ffmpeg.org/ffmpeg-filters.html#Timeline-editing
 
