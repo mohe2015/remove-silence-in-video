@@ -10,15 +10,14 @@ extern "C" {
     #include <libavutil/avutil.h>
 }
 
-#include <string>
-#include <memory>
-#include <iostream>
-#include <limits>
-#include <tuple>
-#include <memory>
-
 export module main;
 import lib;
+import <string>;
+import <memory>;
+import <iostream>;
+import <limits>;
+import <tuple>;
+import <memory>;
 
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html

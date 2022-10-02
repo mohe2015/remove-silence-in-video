@@ -9,14 +9,13 @@ extern "C" {
     #include <libavutil/avutil.h>
 }
 
-#include <string>
-#include <memory>
-#include <iostream>
-#include <limits>
-#include <tuple>
-#include <memory>
-
 export module lib;
+import <string>;
+import <memory>;
+import <iostream>;
+import <limits>;
+import <tuple>;
+import <memory>;
 
 export void my_avformat_close_input(AVFormatContext* av_format_context) {
     avformat_close_input(&av_format_context);

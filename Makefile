@@ -2,10 +2,10 @@ all: run
 
 # https://clang.llvm.org/docs/StandardCPlusPlusModules.html
 compile:
-	clang++ -std=c++20 -Wall -Wextra -x c++-module lib.cppm --precompile -o lib.pcm
-	clang++ -std=c++20 -fprebuilt-module-path=. -Wall -Wextra main.cpp -c -o main.o
-	clang++ -std=c++20 lib.pcm -c -o lib.o
-	clang++ main.o lib.o -lavformat -lavcodec -lavutil -lavfilter -o main
+	clang++ -stdlib=libc++ -std=c++20 -Wall -Wextra -fprebuilt-module-path=. -x c++-module lib.cppm --precompile -o lib.pcm
+	clang++ -stdlib=libc++ -std=c++20 -Wall -Wextra -fprebuilt-module-path=. main.cpp -c -o main.o
+	clang++ -stdlib=libc++ -std=c++20 -Wall -Wextra -fprebuilt-module-path=. lib.pcm -c -o lib.o
+	clang++ -stdlib=libc++ -std=c++20 -Wall -Wextra -fprebuilt-module-path=. main.o lib.o -lavformat -lavcodec -lavutil -lavfilter -o main
 	
 
 clean:
