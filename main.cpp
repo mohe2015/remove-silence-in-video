@@ -20,12 +20,17 @@ int main() {
         return ret;
     }
 
+     if ((ret = avformat_find_stream_info(av_format_context, NULL)) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
+        return ret;
+    }
+
     for (int i = 0; i < av_format_context->nb_streams; i++) {
         av_dump_format(av_format_context, i, filename, 0);
     }
 
     const AVCodec *audio_codec;
-    const AVCodecContext *audio_codec_ctx;
+    AVCodecContext *audio_codec_ctx;
 
     // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
@@ -35,33 +40,26 @@ int main() {
         return ret;
     }
     int audio_stream_index = ret;
-/*
-    if (!(input_codec = avcodec_find_decoder(stream->codecpar->codec_id))) {
-        fprintf(stderr, "Could not find input codec\n");
-        avformat_close_input(input_format_context);
-        return AVERROR_EXIT;
-    }
     
     audio_codec_ctx = avcodec_alloc_context3(audio_codec);
-    if (!c) {
-        fprintf(stderr, "Could not allocate audio codec context\n");
-        exit(1);
+    if (!audio_codec_ctx) {
+        av_log(NULL, AV_LOG_ERROR, "could not allocate coded context\n");
+        return ret;
     }
 
-    error = avcodec_parameters_to_context(avctx, stream->codecpar);
-    if (error < 0) {
-        avformat_close_input(input_format_context);
-        avcodec_free_context(&avctx);
-        return error;
+    ret = avcodec_parameters_to_context(audio_codec_ctx, av_format_context->streams[audio_stream_index]->codecpar);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "failed to add parameters to context\n");
+        return ret;
     }
  
-    if (avcodec_open2(c, audio_codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
-        exit(1);
+    if (avcodec_open2(audio_codec_ctx, audio_codec, NULL) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "could not open decoder\n");
+        return ret;
     }
 
-    avctx->pkt_timebase = stream->time_base;
-*/
+    std::cout << "works!" << std::endl;
+
     // https://ffmpeg.org/doxygen/trunk/structAVCodecContext.html
 
 
