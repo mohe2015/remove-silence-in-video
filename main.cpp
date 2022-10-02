@@ -25,7 +25,11 @@ int main() {
         av_dump_format(av_format_context, i, filename, 0);
     }
 
-    if (avformat_seek_file(av_format_context, 0, 0, 0, std::numeric_limits<int64_t>::max(), 0) < 0) {
+    int position = 0;
+
+    // apparently because of b-keyframes frames would not need to be in order (pts vs dts) so maybe
+    // this method is better than manually?
+    if (avformat_seek_file(av_format_context, 0, std::numeric_limits<int64_t>::min(), position, std::numeric_limits<int64_t>::max(), 0) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to seek\n");
         return ret;
     }
@@ -36,6 +40,7 @@ int main() {
     }
 
     std::cout << "position: " << av_packet->dts << std::endl;
+    position = av_packet->dts + 1;
 
     /*
     // AVPacketList
