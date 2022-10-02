@@ -1,11 +1,38 @@
 extern "C" {
     #include <libavformat/avformat.h>
     #include <libavcodec/avcodec.h>
+    #include <libavfilter/avfilter.h>
 }
 #include <iostream>
 #include <limits>
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
+
+int build_filter_tree() {
+    const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
+    const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
+    const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
+    AVFilterContext *buffersink_ctx;
+    AVFilterContext *buffersrc_ctx;
+
+    AVFilterInOut *outputs = avfilter_inout_alloc();
+    AVFilterInOut *inputs  = avfilter_inout_alloc();
+
+    AVFilterGraph * filter_graph = avfilter_graph_alloc();
+
+     if (!outputs || !inputs || !filter_graph) {
+        return AVERROR(ENOMEM);
+    }
+
+    int ret = avfilter_graph_create_filter(&buffersrc_ctx, abuffersrc, "in",
+                                       NULL, NULL, filter_graph);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
+        return ret;
+    }
+
+    return 0;
+}
 
 int main() {
     // first use libavformat to demux the file
@@ -61,6 +88,11 @@ int main() {
     }
 
     std::cout << "works!" << std::endl;
+
+    if (build_filter_tree() != 0) {
+        std::cout << "failed to build filter tree!" << std::endl;
+        return 1;
+    }
 
      // AVPacketList
     AVPacket* packet = av_packet_alloc();
