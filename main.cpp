@@ -88,7 +88,7 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
     return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
-int main() {
+export int main() {
     int ret;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
