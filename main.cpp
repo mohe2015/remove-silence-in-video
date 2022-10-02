@@ -12,11 +12,14 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
     char args[512]; // uff
     AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
-    const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
+    //const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
     const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
+    const AVFilter *null_filter = avfilter_get_by_name("null");
+    AVFilterContext *null_filter_context;
     AVFilterContext *buffersink_ctx;
     AVFilterContext *buffersrc_ctx;
+    //AVFilterContext *silencedetect_context;
 
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
@@ -40,6 +43,40 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
                                        args, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
+        return ret;
+    }
+
+    ret = avfilter_graph_create_filter(&null_filter_context, null_filter, "out",
+                                       NULL, NULL, filter_graph);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot create null sink\n");
+        return ret;
+    }
+ 
+    outputs->name       = av_strdup("in");
+    outputs->filter_ctx = buffersrc_ctx;
+    outputs->pad_idx    = 0;
+    outputs->next       = NULL;
+ 
+    /*
+     * The buffer sink input must be connected to the output pad of
+     * the last filter described by filters_descr; since the last
+     * filter output label is not specified, it is set to "out" by
+     * default.
+     */
+    inputs->name       = av_strdup("out");
+    inputs->filter_ctx = null_filter_context;
+    inputs->pad_idx    = 0;
+    inputs->next       = NULL;
+ 
+    if ((ret = avfilter_graph_parse_ptr(filter_graph, "silencedetect",
+                                        &inputs, &outputs, NULL)) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot parse filter graph\n");
+        return ret;
+    }
+ 
+    if ((ret = avfilter_graph_config(filter_graph, NULL)) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot configure graph\n");
         return ret;
     }
 
@@ -105,6 +142,8 @@ int main() {
         std::cout << "failed to build filter tree!" << std::endl;
         return 1;
     }
+
+    return 0;
 
      // AVPacketList
     AVPacket* packet = av_packet_alloc();
