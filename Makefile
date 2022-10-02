@@ -1,7 +1,7 @@
 all: run
 
 compile:
-	g++ -lavformat -lavcodec main.cpp -o main
+	g++ -lavformat -lavcodec -lavutil main.cpp -o main
 
 run: compile
 	./main
