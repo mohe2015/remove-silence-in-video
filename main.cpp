@@ -189,10 +189,15 @@ int main() {
                             break;
                         if (ret < 0)
                             exit(1);
+
+                        std::cout << "entries: " << av_dict_count(filt_frame->metadata) << std::endl;
                         
                         // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
                         char* buffer;
-                        av_dict_get_string(filt_frame->metadata, &buffer, '=', ';');
+                        if (av_dict_get_string(filt_frame->metadata, &buffer, '=', ';') < 0) {
+                             av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
+                            break;
+                        }
                         std::cout << buffer << std::endl;
 
                         // "lavfi.silence_start"
