@@ -1,7 +1,7 @@
 all: run
 
 compile:
-	g++ -lavformat -lavcodec -lavutil -lavfilter main.cpp -o main
+	g++ -std=c++20 -lavformat -lavcodec -lavutil -lavfilter main.cpp -o main
 
 run: compile
 	./main

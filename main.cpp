@@ -2,21 +2,24 @@ extern "C" {
     #include <libavformat/avformat.h>
     #include <libavcodec/avcodec.h>
     #include <libavfilter/avfilter.h>
+    #include <libavfilter/buffersrc.h>
+    #include <libavfilter/buffersink.h>
 }
 #include <iostream>
 #include <limits>
+#include <tuple>
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
-int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
+std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
     char args[512]; // uff
     AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
     //const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
     const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
-    AVFilterContext *abuffersink_ctx;
     AVFilterContext *abuffersrc_ctx;
+    AVFilterContext *abuffersink_ctx;
     //AVFilterContext *silencedetect_context;
 
     AVFilterInOut *outputs = avfilter_inout_alloc();
@@ -25,7 +28,8 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
     AVFilterGraph * filter_graph = avfilter_graph_alloc();
 
      if (!outputs || !inputs || !filter_graph) {
-        return AVERROR(ENOMEM);
+        av_log(NULL, AV_LOG_ERROR, "allocation failed\n");
+        exit(1);
     }
 
      if (audio_codec_context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
@@ -41,14 +45,14 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
                                        args, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
-        return ret;
+        exit(1);
     }
 
     ret = avfilter_graph_create_filter(&abuffersink_ctx, abuffersink, "out",
                                        NULL, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create null sink\n");
-        return ret;
+        exit(1);
     }
  
     outputs->name       = av_strdup("in");
@@ -70,18 +74,18 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
     if ((ret = avfilter_graph_parse_ptr(filter_graph, "silencedetect",
                                         &inputs, &outputs, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot parse filter graph\n");
-        return ret;
+        exit(1);
     }
  
     if ((ret = avfilter_graph_config(filter_graph, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot configure graph\n");
-        return ret;
+        exit(1);
     }
 
     // set_meta
     // https://github.com/FFmpeg/FFmpeg/blob/6f8b8e633205ab690a6a33b139f4e95828e4892f/libavfilter/af_silencedetect.c
 
-    return 0;
+    return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
 int main() {
@@ -139,12 +143,11 @@ int main() {
 
     std::cout << "works!" << std::endl;
 
-    if (build_filter_tree(av_format_context, audio_codec_ctx, audio_stream_index) != 0) {
-        std::cout << "failed to build filter tree!" << std::endl;
-        return 1;
-    }
+    AVFilterContext *abuffersrc_ctx;
+    AVFilterContext *abuffersink_ctx;
+    std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(av_format_context, audio_codec_ctx, audio_stream_index);
 
-    return 0;
+    AVFrame *filt_frame = av_frame_alloc();
 
      // AVPacketList
     AVPacket* packet = av_packet_alloc();
@@ -173,21 +176,24 @@ int main() {
  
                 if (ret >= 0) {
                     // push the audio data from decoded frame into the filtergraph
-                    /*if (av_buffersrc_add_frame_flags(buffersrc_ctx, frame, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
+                    if (av_buffersrc_add_frame_flags(abuffersrc_ctx, frame, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
                         av_log(NULL, AV_LOG_ERROR, "Error while feeding the audio filtergraph\n");
                         break;
                     }
  
                     // pull filtered audio from the filtergraph 
                     while (1) {
-                        ret = av_buffersink_get_frame(buffersink_ctx, filt_frame);
+                        ret = av_buffersink_get_frame(abuffersink_ctx, filt_frame);
                         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
                             break;
                         if (ret < 0)
-                            goto end;
-                        print_frame(filt_frame);
+                            exit(1);
+                        
+                        // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
+                        //
+
                         av_frame_unref(filt_frame);
-                    }*/
+                    }
                     av_frame_unref(frame);
                 }
             }
