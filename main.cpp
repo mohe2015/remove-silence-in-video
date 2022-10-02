@@ -183,7 +183,7 @@ int main() {
             }
 
             while (ret >= 0) {
-                ret = avcodec_receive_frame(video_codec_ctx, audio_frame);
+                ret = avcodec_receive_frame(video_codec_ctx, video_frame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                     break;
                 } else if (ret < 0) {
@@ -191,7 +191,7 @@ int main() {
                     return ret;
                 }
 
-                //std::cout << "Video decoded" << std::endl;
+                std::cout << "Keyframe detected " << video_frame->key_frame << " " << video_frame->pts << std::endl;
 
                 if (ret >= 0) {
                     
