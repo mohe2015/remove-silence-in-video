@@ -20,11 +20,6 @@ int main() {
         return ret;
     }
 
-     if ((ret = avformat_find_stream_info(av_format_context, NULL)) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
-        return ret;
-    }
-
     for (int i = 0; i < av_format_context->nb_streams; i++) {
         av_dump_format(av_format_context, i, filename, 0);
     }
