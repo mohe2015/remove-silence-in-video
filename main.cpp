@@ -89,10 +89,11 @@ std::tuple<AVFilterContext *, AVFilterContext *> build_filter_tree(AVFormatConte
 }
 
 export int main() {
+    try {
     int ret;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
-    const char    *filename = "file:test.mp4";
+    const char    *filename = "file:test.mfp4";
     std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)> av_format_context = my_avformat_open_input(filename);
 
      if ((ret = avformat_find_stream_info(av_format_context.get(), NULL)) < 0) {
@@ -311,4 +312,8 @@ export int main() {
     // and mux
 
     return 0;
+    } catch (std::string error) {
+        std::cerr << error << std::endl;
+        return 1;
+    }
 }

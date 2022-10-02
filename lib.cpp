@@ -25,7 +25,7 @@ export std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)> my_a
     AVFormatContext *av_format_context = NULL;
     int ret = avformat_open_input(&av_format_context, filename.c_str(), NULL, NULL);
     if (ret != 0) {
-        throw "avformat_open_input failed";
+        throw std::string("avformat_open_input failed");
     }
     return std::unique_ptr<AVFormatContext, decltype(&my_avformat_close_input)>(av_format_context, &my_avformat_close_input);
 }
