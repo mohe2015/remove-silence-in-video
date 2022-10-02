@@ -15,10 +15,8 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
     //const AVFilter* silencedetect = avfilter_get_by_name("silencedetect");
     const AVFilter* abuffersrc = avfilter_get_by_name("abuffer");
     const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
-    const AVFilter *null_filter = avfilter_get_by_name("null");
-    AVFilterContext *null_filter_context;
-    AVFilterContext *buffersink_ctx;
-    AVFilterContext *buffersrc_ctx;
+    AVFilterContext *abuffersink_ctx;
+    AVFilterContext *abuffersrc_ctx;
     //AVFilterContext *silencedetect_context;
 
     AVFilterInOut *outputs = avfilter_inout_alloc();
@@ -39,14 +37,14 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
              av_get_sample_fmt_name(audio_codec_context->sample_fmt));
     av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret, sizeof(args) - ret);
 
-    ret = avfilter_graph_create_filter(&buffersrc_ctx, abuffersrc, "in",
+    ret = avfilter_graph_create_filter(&abuffersrc_ctx, abuffersrc, "in",
                                        args, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
         return ret;
     }
 
-    ret = avfilter_graph_create_filter(&null_filter_context, null_filter, "out",
+    ret = avfilter_graph_create_filter(&abuffersink_ctx, abuffersink, "out",
                                        NULL, NULL, filter_graph);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create null sink\n");
@@ -54,7 +52,7 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
     }
  
     outputs->name       = av_strdup("in");
-    outputs->filter_ctx = buffersrc_ctx;
+    outputs->filter_ctx = abuffersrc_ctx;
     outputs->pad_idx    = 0;
     outputs->next       = NULL;
  
@@ -65,7 +63,7 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
      * default.
      */
     inputs->name       = av_strdup("out");
-    inputs->filter_ctx = null_filter_context;
+    inputs->filter_ctx = abuffersink_ctx;
     inputs->pad_idx    = 0;
     inputs->next       = NULL;
  
@@ -79,6 +77,9 @@ int build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_cod
         av_log(NULL, AV_LOG_ERROR, "Cannot configure graph\n");
         return ret;
     }
+
+    // set_meta
+    // https://github.com/FFmpeg/FFmpeg/blob/6f8b8e633205ab690a6a33b139f4e95828e4892f/libavfilter/af_silencedetect.c
 
     return 0;
 }
