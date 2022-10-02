@@ -169,6 +169,9 @@ int main() {
     AVPacket* packet = av_packet_alloc();
     AVFrame *audio_frame = av_frame_alloc();
     AVFrame *video_frame = av_frame_alloc();
+
+    video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
+
     while (av_read_frame(av_format_context, packet) == 0) {
         //std::cout << "Read packet" << std::endl;
 
@@ -180,7 +183,7 @@ int main() {
             }
 
             while (ret >= 0) {
-                ret = avcodec_receive_frame(audio_codec_ctx, audio_frame);
+                ret = avcodec_receive_frame(video_codec_ctx, audio_frame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                     break;
                 } else if (ret < 0) {
@@ -188,13 +191,13 @@ int main() {
                     return ret;
                 }
 
-                std::cout << "Video decoded" << std::endl;
+                //std::cout << "Video decoded" << std::endl;
 
                 if (ret >= 0) {
                     
 
 
-                    av_frame_unref(audio_frame);
+                    av_frame_unref(video_frame);
                 }
             }
         }
@@ -257,6 +260,8 @@ int main() {
 
 
     av_packet_unref(packet);
+
+    // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html
 
 /*
     int last_position = 0;
