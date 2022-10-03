@@ -180,6 +180,20 @@ static MyAVFilterContext my_avfilter_graph_create_filter(const AVFilter &filter,
   return MyAVFilterContext(graph, filter_context);
 }
 
+static void my_avfilter_graph_parse(MyAVFilterGraph graph, std::string filters, MyAVFilterInOut inputs, MyAVFilterInOut outputs) {
+  int ret = avfilter_graph_parse(graph.get(), filters.c_str(), inputs.get(), outputs.get(), nullptr);
+  if (ret != 0) {
+    throw std::string("avfilter_graph_parse failed");
+  }
+}
+
+static void my_avfilter_graph_config(MyAVFilterGraph graph) {
+  int ret = avfilter_graph_config(graph.get(), nullptr);
+  if (ret < 0) {
+    throw std::string("avfilter_graph_config failed");
+  }
+}
+
 /*
 static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFrame frame) {
 
@@ -230,18 +244,9 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  int ret;
-  if ((ret = avfilter_graph_parse(filter_graph.get(),
-                                      "silencedetect=noise=-40dB:duration=1",
-                                      inputs.get(), outputs.get(), nullptr)) < 0) {
-    av_log(nullptr, AV_LOG_ERROR, "Cannot parse filter graph\n");
-    exit(1);
-  }
-
-  if ((ret = avfilter_graph_config(filter_graph.get(), nullptr)) < 0) {
-    av_log(nullptr, AV_LOG_ERROR, "Cannot configure graph\n");
-    exit(1);
-  }
+  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-40dB:duration=1", inputs, outputs);
+  
+  my_avfilter_graph_config(filter_graph);
 
   return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
