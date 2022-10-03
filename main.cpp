@@ -1,3 +1,4 @@
+#include <memory>
 module;
 
 extern "C" {
@@ -21,7 +22,6 @@ export void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
 }
 
-
 export void my_avcodec_free_context(AVCodecContext *av_codec_context) {
   avcodec_free_context(&av_codec_context);
 }
@@ -34,11 +34,21 @@ export void my_av_frame_free(AVFrame *av_frame) {
   av_frame_free(&av_frame);
 }
 
+export void my_avfilter_graph_free(AVFilterGraph *filter_graph) {
+  avfilter_graph_free(&filter_graph);
+}
+
+export void my_avfilter_inout_free(AVFilterInOut *filter_inout) {
+  avfilter_inout_free(&filter_inout);
+}
+
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;
 export using MyAVCodec = std::shared_ptr<const AVCodec>;
 export using MyAVCodecContext = std::shared_ptr<AVCodecContext>;
 export using MyAVPacket = std::shared_ptr<AVPacket>;
 export using MyAVFrame = std::shared_ptr<AVFrame>;
+export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
+export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
 
 export MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context;
@@ -124,29 +134,44 @@ export bool my_avcodec_receive_frame(MyAVCodecContext codec_context, MyAVFrame f
   }
 }
 
+export MyAVFilterGraph my_avfilter_graph_alloc() {
+  return MyAVFilterGraph(avfilter_graph_alloc(), my_avfilter_graph_free);
+}
+
+export MyAVFilterInOut my_avfilter_inout_alloc() {
+  return MyAVFilterInOut(avfilter_inout_alloc(), my_avfilter_inout_free);
+}
+
+export const AVFilter& my_avfilter_get_by_name(std::string name) {
+  const AVFilter* filter = avfilter_get_by_name(name.c_str());
+  if (filter == nullptr) {
+    throw std::string("avfilter_get_by_name failed");
+  }
+  return *filter;
+}
+
+/*
+export void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFrame frame) {
+
+}
+*/
+
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
 std::tuple<AVFilterContext *, AVFilterContext *>
-build_filter_tree(AVFormatContext *format_context,
-                  AVCodecContext *audio_codec_context, int audio_stream_index) {
+build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
   char args[512]; // uff
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
-  const AVFilter *abuffersrc = avfilter_get_by_name("abuffer");
-  const AVFilter *abuffersink = avfilter_get_by_name("abuffersink");
+  const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
+  const AVFilter &abuffersink = my_avfilter_get_by_name("abuffersink");
   AVFilterContext *abuffersrc_ctx;
   AVFilterContext *abuffersink_ctx;
 
-  AVFilterInOut *outputs = avfilter_inout_alloc();
-  AVFilterInOut *inputs = avfilter_inout_alloc();
-
-  AVFilterGraph *filter_graph = avfilter_graph_alloc();
-
-  if (!outputs || !inputs || !filter_graph) {
-    av_log(NULL, AV_LOG_ERROR, "allocation failed\n");
-    exit(1);
-  }
+  MyAVFilterInOut outputs = my_avfilter_inout_alloc();
+  MyAVFilterInOut inputs = my_avfilter_inout_alloc();
+  MyAVFilterGraph filter_graph = my_avfilter_graph_alloc();
 
   if (audio_codec_context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
     av_channel_layout_default(&audio_codec_context->ch_layout,
@@ -297,12 +322,6 @@ export int main() {
               break;
             if (ret < 0)
               exit(1);
-
-            // ffmpeg -i test.mp4 -af "silencedetect=noise=-50dB:duration=2"
-            // -f null -
-
-            // std::cout << "entries: " << av_dict_count(filt_frame->metadata)
-            // << std::endl;
 
             // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
             char *buffer;
