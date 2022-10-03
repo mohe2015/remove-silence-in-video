@@ -106,6 +106,24 @@ export bool my_av_read_frame(MyAVFormatContext av_format_context, MyAVPacket av_
   return true;
 }
 
+export void my_avcodec_send_packet(MyAVCodecContext codec_context, MyAVPacket packet) {
+  int ret = avcodec_send_packet(codec_context.get(), packet.get());
+  if (ret != 0) {
+    throw std::string("avcodec_send_packet failed");
+  }
+}
+
+export bool my_avcodec_receive_frame(MyAVCodecContext codec_context, MyAVFrame frame) {
+  int ret = avcodec_receive_frame(codec_context.get(), frame.get());
+  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+    return false;
+  } else if (ret < 0) {
+    throw std::string("my_avcodec_receive_frame failed");
+  } else {
+    return true;
+  }
+}
+
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
@@ -248,28 +266,13 @@ export int main() {
       // std::cout << "Read packet" << std::endl;
 
       if (packet->stream_index == video_stream_index) {
-        ret = avcodec_send_packet(video_codec_ctx.get(), packet.get());
-        if (ret < 0) {
-          av_log(NULL, AV_LOG_ERROR,
-                 "Error while sending a packet to the video decoder\n");
-          break;
-        }
+        my_avcodec_send_packet(video_codec_ctx, packet);
 
-        while (ret >= 0) {
-          ret = avcodec_receive_frame(video_codec_ctx.get(), video_frame.get());
-          if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            break;
-          } else if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR,
-                   "Error while receiving a frame from the decoder\n");
-            return ret;
-          }
-
+        while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
           std::cout << "Keyframe detected " << video_frame->key_frame << " "
                     << video_frame->pts << std::endl;
 
           if (ret >= 0) {
-
             av_frame_unref(video_frame.get());
           }
         }
@@ -277,26 +280,11 @@ export int main() {
 
       // TODO FIXMe handle end of file correctly (flushing)
       if (packet->stream_index == audio_stream_index) {
-        ret = avcodec_send_packet(audio_codec_ctx.get(), packet.get());
-        if (ret < 0) {
-          av_log(NULL, AV_LOG_ERROR,
-                 "Error while sending a packet to the audio decoder\n");
-          break;
-        }
+        my_avcodec_send_packet(audio_codec_ctx, packet);
 
-        while (ret >= 0) {
-          ret = avcodec_receive_frame(audio_codec_ctx.get(), audio_frame.get());
-          if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            break;
-          } else if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR,
-                   "Error while receiving a frame from the decoder\n");
-            return ret;
-          }
-
+        while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
           // std::cout << "Decoded" << std::endl;
 
-          if (ret >= 0) {
             // push the audio data from decoded frame into the filtergraph
             if (av_buffersrc_add_frame_flags(abuffersrc_ctx, audio_frame.get(),
                                              AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
@@ -334,7 +322,7 @@ export int main() {
               av_frame_unref(audio_filter_frame);
             }
             av_frame_unref(audio_frame.get());
-          }
+          
         }
       }
     }
