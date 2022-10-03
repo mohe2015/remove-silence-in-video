@@ -271,10 +271,6 @@ export int main() {
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
           std::cout << "Keyframe detected " << video_frame->key_frame << " "
                     << video_frame->pts << std::endl;
-
-          if (ret >= 0) {
-            av_frame_unref(video_frame.get());
-          }
         }
       }
 
@@ -285,44 +281,42 @@ export int main() {
         while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
           // std::cout << "Decoded" << std::endl;
 
-            // push the audio data from decoded frame into the filtergraph
-            if (av_buffersrc_add_frame_flags(abuffersrc_ctx, audio_frame.get(),
-                                             AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
-              av_log(NULL, AV_LOG_ERROR,
-                     "Error while feeding the audio filtergraph\n");
+          // push the audio data from decoded frame into the filtergraph
+          if (av_buffersrc_add_frame_flags(abuffersrc_ctx, audio_frame.get(),
+                                            AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
+            av_log(NULL, AV_LOG_ERROR,
+                    "Error while feeding the audio filtergraph\n");
+            break;
+          }
+
+          // pull filtered audio from the filtergraph
+          while (1) {
+            ret =
+                av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+              break;
+            if (ret < 0)
+              exit(1);
+
+            // ffmpeg -i test.mp4 -af "silencedetect=noise=-50dB:duration=2"
+            // -f null -
+
+            // std::cout << "entries: " << av_dict_count(filt_frame->metadata)
+            // << std::endl;
+
+            // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
+            char *buffer;
+            if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
+                                    ';') < 0) {
+              av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
               break;
             }
+            std::cout << buffer << std::flush;
 
-            // pull filtered audio from the filtergraph
-            while (1) {
-              ret =
-                  av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame);
-              if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                break;
-              if (ret < 0)
-                exit(1);
+            // "lavfi.silence_start"
 
-              // ffmpeg -i test.mp4 -af "silencedetect=noise=-50dB:duration=2"
-              // -f null -
-
-              // std::cout << "entries: " << av_dict_count(filt_frame->metadata)
-              // << std::endl;
-
-              // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
-              char *buffer;
-              if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
-                                     ';') < 0) {
-                av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
-                break;
-              }
-              std::cout << buffer << std::flush;
-
-              // "lavfi.silence_start"
-
-              av_frame_unref(audio_filter_frame);
-            }
-            av_frame_unref(audio_frame.get());
-          
+            av_frame_unref(audio_filter_frame);
+          }          
         }
       }
     }
