@@ -50,7 +50,7 @@ export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
 export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
 
 export MyAVFormatContext my_avformat_open_input(std::string filename) {
-  AVFormatContext *av_format_context;
+  AVFormatContext *av_format_context = nullptr;
   int ret =
       avformat_open_input(&av_format_context, filename.c_str(), NULL, NULL);
   if (ret != 0) {
@@ -67,7 +67,7 @@ export void my_avformat_find_stream_info(MyAVFormatContext av_format_context) {
 }
 
 export std::tuple<int, MyAVCodec> my_av_find_best_stream(MyAVFormatContext av_format_context, AVMediaType av_media_type) {
-  const AVCodec *av_codec;
+  const AVCodec *av_codec = nullptr;
   int ret = av_find_best_stream(av_format_context.get(), av_media_type, -1, -1, &av_codec, 0);
   if (ret < 0) {
     throw std::string("av_find_best_stream failed");
@@ -182,8 +182,8 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
   const AVFilter &abuffersink = my_avfilter_get_by_name("abuffersink");
-  AVFilterContext *abuffersrc_ctx;
-  AVFilterContext *abuffersink_ctx;
+  AVFilterContext *abuffersrc_ctx = nullptr;
+  AVFilterContext *abuffersink_ctx = nullptr;
 
   MyAVFilterInOut outputs = my_avfilter_inout_alloc();
   MyAVFilterInOut inputs = my_avfilter_inout_alloc();
@@ -242,7 +242,7 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
 
 export int main() {
   try {
-    int ret;
+    int ret = 0;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
     std::string filename = "file:test.mp4";
@@ -254,8 +254,8 @@ export int main() {
       av_dump_format(av_format_context.get(), i, filename.c_str(), 0);
     }*/
 
-    MyAVCodecContext audio_codec_ctx;
-    MyAVCodecContext video_codec_ctx;
+    MyAVCodecContext audio_codec_ctx = nullptr;
+    MyAVCodecContext video_codec_ctx = nullptr;
 
     // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
@@ -289,8 +289,8 @@ export int main() {
 
     std::cout << "works!" << std::endl;
 
-    AVFilterContext *abuffersrc_ctx;
-    AVFilterContext *abuffersink_ctx;
+    AVFilterContext *abuffersrc_ctx = nullptr;
+    AVFilterContext *abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
         av_format_context.get(), audio_codec_ctx.get(), audio_stream_index);
 
@@ -340,7 +340,7 @@ export int main() {
               exit(1);
 
             // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
-            char *buffer;
+            char *buffer = nullptr;
             if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
                                     ';') < 0) {
               av_log(NULL, AV_LOG_ERROR, "failed extracting dictionary\n");
