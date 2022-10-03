@@ -208,6 +208,26 @@ static void my_avfilter_graph_config(MyAVFilterGraph graph) {
   }
 }
 
+static std::string my_av_channel_layout_describe_bprint(MyAVCodecContext codec_context) {
+  AVBPrint bprint;
+  av_bprint_init(&bprint, 0, AV_BPRINT_SIZE_UNLIMITED);
+
+  int ret = av_channel_layout_describe_bprint(&codec_context->ch_layout, &bprint);
+  if (ret != 0) {
+    throw std::string("av_channel_layout_describe_bprint failed");
+  }
+
+  char* result = nullptr;
+
+  av_bprint_finalize(&bprint, &result);
+
+  std::string return_value = std::string(result);
+
+  av_free(result);
+
+  return return_value;
+}
+
 /*
 static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src,
 MyAVFrame frame) {
@@ -219,8 +239,8 @@ MyAVFrame frame) {
 // https://ffmpeg.org/ffmpeg.html
 
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
-build_filter_tree(AVFormatContext *format_context,
-                  AVCodecContext *audio_codec_context, int audio_stream_index) {
+build_filter_tree(MyAVFormatContext format_context,
+                  MyAVCodecContext audio_codec_context, int audio_stream_index) {
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
@@ -239,15 +259,8 @@ build_filter_tree(AVFormatContext *format_context,
              << ":sample_rate=" << audio_codec_context->sample_rate
              << ":sample_fmt="
              << av_get_sample_fmt_name(audio_codec_context->sample_fmt)
-             << ":channel_layout=";
-
-  AVBPrint layout;
-  av_bprint_init(&layout, 0, AV_BPRINT_SIZE_UNLIMITED);
-
-  av_channel_layout_describe_bprint(&audio_codec_context->ch_layout, &layout);
-
-  argsstream << layout.str;
-
+             << ":channel_layout="
+             << my_av_channel_layout_describe_bprint(audio_codec_context);
   std::string args = argsstream.str();
 
   MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(
@@ -326,7 +339,7 @@ export int main() {
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
-        av_format_context.get(), audio_codec_ctx.get(), audio_stream_index);
+        av_format_context, audio_codec_ctx, audio_stream_index);
 
     AVFrame *audio_filter_frame = av_frame_alloc();
 
