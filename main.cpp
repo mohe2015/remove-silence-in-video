@@ -7,6 +7,7 @@ extern "C" {
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/bprint.h>
 }
 
 export module main;
@@ -17,6 +18,7 @@ export import <limits>;
 export import <tuple>;
 export import <memory>;
 import <optional>;
+import <sstream>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -189,7 +191,6 @@ static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFr
 
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
-  char args[512]; // uff
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
@@ -203,15 +204,19 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
     av_channel_layout_default(&audio_codec_context->ch_layout,
                               audio_codec_context->ch_layout.nb_channels);
   }
-  int ret =
-      snprintf(args, sizeof(args),
-               "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=",
-               time_base.num, time_base.den, audio_codec_context->sample_rate,
-               av_get_sample_fmt_name(audio_codec_context->sample_fmt));
-  av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret,
-                             sizeof(args) - ret);
+  std::ostringstream argsstream;
+  argsstream << "time_base=" << time_base.num << "/" << time_base.den << ":sample_rate=" << audio_codec_context->sample_rate << ":sample_fmt=" << av_get_sample_fmt_name(audio_codec_context->sample_fmt) << ":channel_layout=";
 
-  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::make_optional<std::string>(args), filter_graph);
+  AVBPrint layout;
+  av_bprint_init(&layout, 0, AV_BPRINT_SIZE_UNLIMITED);
+
+  av_channel_layout_describe_bprint(&audio_codec_context->ch_layout, &layout);
+
+  argsstream << layout.str;
+
+  std::string args = argsstream.str();
+
+  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::optional(args), filter_graph);
 
   MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(abuffersink, "out", std::optional<std::string>(), filter_graph);
 
@@ -225,6 +230,7 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
+  int ret;
   if ((ret = avfilter_graph_parse(filter_graph.get(),
                                       "silencedetect=noise=-40dB:duration=1",
                                       inputs.get(), outputs.get(), nullptr)) < 0) {
