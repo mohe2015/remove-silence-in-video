@@ -16,6 +16,7 @@ export import <iostream>;
 export import <limits>;
 export import <tuple>;
 export import <memory>;
+import <optional>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -168,9 +169,9 @@ static const AVFilter& my_avfilter_get_by_name(std::string name) {
   return *filter;
 }
 
-static MyAVFilterContext my_avfilter_graph_create_filter(const AVFilter &filter, std::string name, std::string args, MyAVFilterGraph graph) {
+static MyAVFilterContext my_avfilter_graph_create_filter(const AVFilter &filter, std::string name, std::optional<std::string> args, MyAVFilterGraph graph) {
   AVFilterContext *filter_context = nullptr;
-  int ret = avfilter_graph_create_filter(&filter_context, &filter, name.c_str(), args.c_str(), nullptr, graph.get());
+  int ret = avfilter_graph_create_filter(&filter_context, &filter, name.c_str(), args.has_value() ? args->c_str() : nullptr, nullptr, graph.get());
   if (ret < 0) {
     throw std::string("my_avfilter_graph_create_filter failed");
   }
@@ -210,9 +211,9 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret,
                              sizeof(args) - ret);
 
-  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::string(args), filter_graph);
+  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::make_optional<std::string>(args), filter_graph);
 
-  MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(abuffersink, "out", nullptr, filter_graph);
+  MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(abuffersink, "out", std::optional<std::string>(), filter_graph);
 
   outputs->name = av_strdup("in");
   outputs->filter_ctx = abuffersrc_ctx.get();
