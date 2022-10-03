@@ -152,6 +152,19 @@ static bool my_avcodec_receive_frame(MyAVCodecContext codec_context,
   }
 }
 
+static bool av_buffersink_get_frame(MyAVFilterContext filter_context,
+                                    MyAVFrame frame) {
+  av_frame_unref(frame.get());
+  int ret = av_buffersink_get_frame(filter_context.get(), frame.get());
+  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+    return false;
+  } else if (ret < 0) {
+    throw std::string("av_buffersink_get_frame failed");
+  } else {
+    return true;
+  }
+}
+
 static MyAVFilterGraph my_avfilter_graph_alloc() {
   AVFilterGraph *filter_graph = avfilter_graph_alloc();
   if (filter_graph == nullptr) {
@@ -208,24 +221,38 @@ static void my_avfilter_graph_config(MyAVFilterGraph graph) {
   }
 }
 
-static std::string my_av_channel_layout_describe_bprint(MyAVCodecContext codec_context) {
+static std::string
+my_av_channel_layout_describe_bprint(MyAVCodecContext codec_context) {
   AVBPrint bprint;
   av_bprint_init(&bprint, 0, AV_BPRINT_SIZE_UNLIMITED);
 
-  int ret = av_channel_layout_describe_bprint(&codec_context->ch_layout, &bprint);
+  int ret =
+      av_channel_layout_describe_bprint(&codec_context->ch_layout, &bprint);
   if (ret != 0) {
     throw std::string("av_channel_layout_describe_bprint failed");
   }
 
-  char* result = nullptr;
+  char *result = nullptr;
 
   av_bprint_finalize(&bprint, &result);
+  if (ret != 0) {
+    throw std::string("av_bprint_finalize failed");
+  }
 
   std::string return_value = std::string(result);
 
   av_free(result);
 
   return return_value;
+}
+
+static void my_av_buffersrc_add_frame(MyAVFilterContext filter_context,
+                                      MyAVFrame frame) {
+  int ret = av_buffersrc_add_frame_flags(filter_context.get(), frame.get(),
+                                         AV_BUFFERSRC_FLAG_KEEP_REF);
+  if (ret < 0) {
+    throw std::string("av_buffersrc_add_frame_flags failed");
+  }
 }
 
 /*
@@ -240,7 +267,8 @@ MyAVFrame frame) {
 
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
-                  MyAVCodecContext audio_codec_context, int audio_stream_index) {
+                  MyAVCodecContext audio_codec_context,
+                  int audio_stream_index) {
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
@@ -290,8 +318,7 @@ build_filter_tree(MyAVFormatContext format_context,
 export int main() {
   try {
     int ret = 0;
-    // https://ffmpeg.org/ffmpeg-formats.html
-    // https://ffmpeg.org/doxygen/trunk/group__libavf.html
+
     std::string filename = "file:test.mp4";
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
@@ -304,10 +331,6 @@ export int main() {
     MyAVCodecContext audio_codec_ctx = nullptr;
     MyAVCodecContext video_codec_ctx = nullptr;
 
-    // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
-    // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
-
-    // TODO FIXME maybe use same for audio and video stream
     MyAVCodec audio_codec;
     int audio_stream_index;
     std::tie(audio_stream_index, audio_codec) =
@@ -334,14 +357,12 @@ export int main() {
 
     my_avcodec_open2(video_codec_ctx, video_codec);
 
-    std::cout << "works!" << std::endl;
-
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
         av_format_context, audio_codec_ctx, audio_stream_index);
 
-    AVFrame *audio_filter_frame = av_frame_alloc();
+    MyAVFrame audio_filter_frame = my_av_frame_alloc();
 
     // AVPacketList
     MyAVPacket packet = my_av_packet_alloc();
@@ -367,38 +388,34 @@ export int main() {
         my_avcodec_send_packet(audio_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
-          // std::cout << "Decoded" << std::endl;
+          my_av_buffersrc_add_frame(abuffersrc_ctx, audio_frame);
 
-          // push the audio data from decoded frame into the filtergraph
-          if (av_buffersrc_add_frame_flags(abuffersrc_ctx.get(),
-                                           audio_frame.get(),
-                                           AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
-            av_log(nullptr, AV_LOG_ERROR,
-                   "Error while feeding the audio filtergraph\n");
-            break;
-          }
+          while (av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame)) {
 
-          // pull filtered audio from the filtergraph
-          while (1) {
-            ret = av_buffersink_get_frame(abuffersink_ctx.get(),
-                                          audio_filter_frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-              break;
-            if (ret < 0)
-              exit(1);
+            AVDictionaryEntry *silence_start =
+                av_dict_get(audio_filter_frame->metadata, "lavfi.silence_start",
+                            nullptr, 0);
+            AVDictionaryEntry *silence_end = av_dict_get(
+                audio_filter_frame->metadata, "lavfi.silence_end", nullptr, 0);
 
-            // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
-            char *buffer = nullptr;
+            if (silence_start != nullptr) {
+              std::cout << "silence_start: " << silence_start->value
+                        << std::endl;
+            }
+            if (silence_end != nullptr) {
+              std::cout << "silence_end: " << silence_end->value << std::endl;
+            }
+
+            /*char *buffer = nullptr;
             if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
                                    ';') < 0) {
               av_log(nullptr, AV_LOG_ERROR, "failed extracting dictionary\n");
               break;
             }
-            std::cout << buffer << std::flush;
+            std::cout << buffer << std::flush;*/
 
-            // "lavfi.silence_start"
-
-            av_frame_unref(audio_filter_frame);
+            // lavfi.silence_start
+            // lavfi.silence_end
           }
         }
       }

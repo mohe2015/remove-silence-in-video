@@ -9,7 +9,7 @@ compile:
 	clang++ -g -ggdb -Og -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.o -lavformat -lavcodec -lavutil -lavfilter -o main # lib.o
 
 format:
-	clang-format -i lib.cpp main.cpp
+	clang-format -i main.cpp # lib.cpp
 
 compile-commands: clean
 	bear -- make
