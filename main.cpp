@@ -1,6 +1,7 @@
 module;
 
 extern "C" {
+#include <cassert>
 #include <libavcodec/avcodec.h>
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
@@ -123,11 +124,20 @@ static MyAVFrame my_av_frame_alloc() {
 }
 
 static bool my_av_read_frame(MyAVFormatContext av_format_context,
-                             MyAVPacket av_packet) {
+                             MyAVPacket &av_packet) {
+  if (av_packet.get() == nullptr) {
+    std::cout << "ALREADY FLUSHED, EXITING" << std::endl;
+    return false;
+  }
   av_packet_unref(av_packet.get());
   int ret = av_read_frame(av_format_context.get(), av_packet.get());
+  if (ret == AVERROR_EOF) {
+    std::cout << "DETECTED EOF, FLUSHING" << std::endl;
+    av_packet.reset();
+    return true;
+  }
   if (ret != 0) {
-    return false;
+    throw std::string("av_read_frame failed");
   }
   return true;
 }
@@ -360,7 +370,7 @@ export int main() {
 
     while (my_av_read_frame(av_format_context, packet)) {
 
-      if (packet->stream_index == video_stream_index) {
+      if (packet == nullptr || packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
@@ -369,8 +379,7 @@ export int main() {
         }
       }
 
-      // TODO FIXMe handle end of file correctly (flushing)
-      if (packet->stream_index == audio_stream_index) {
+      if (packet == nullptr || packet->stream_index == audio_stream_index) {
         my_avcodec_send_packet(audio_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
