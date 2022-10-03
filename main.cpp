@@ -21,8 +21,14 @@ export void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
 }
 
+
+export void my_avcodec_free_context(AVCodecContext *av_codec_context) {
+  avcodec_free_context(&av_codec_context);
+}
+
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;
 export using MyAVCodec = std::shared_ptr<const AVCodec>;
+export using MyAVCodecContext = std::shared_ptr<AVCodecContext>;
 
 export MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context;
@@ -48,6 +54,20 @@ export std::tuple<int, MyAVCodec> my_av_find_best_stream(MyAVFormatContext av_fo
     throw std::string("av_find_best_stream failed");
   }
   return std::make_tuple(ret, MyAVCodec(av_format_context, av_codec));
+}
+
+export MyAVCodecContext my_avcodec_alloc_context3(MyAVCodec av_codec) {
+  AVCodecContext * codec_context = avcodec_alloc_context3(av_codec.get());
+  return MyAVCodecContext(codec_context, &my_avcodec_free_context);
+}
+
+export void my_avcodec_parameters_to_context(MyAVCodecContext codec_ctx, MyAVFormatContext av_format_context, int stream_index) {
+  int ret = avcodec_parameters_to_context(
+        codec_ctx.get(),
+        av_format_context->streams[stream_index]->codecpar);
+  if (ret < 0) {
+    throw std::string("av_find_best_stream failed");
+  }
 }
 
 // https://ffmpeg.org/
@@ -130,7 +150,7 @@ export int main() {
     int ret;
     // https://ffmpeg.org/ffmpeg-formats.html
     // https://ffmpeg.org/doxygen/trunk/group__libavf.html
-    std::string filename = "file:test.mfp4";
+    std::string filename = "file:test.mp4";
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
     my_avformat_find_stream_info(av_format_context);
@@ -139,8 +159,8 @@ export int main() {
       av_dump_format(av_format_context.get(), i, filename.c_str(), 0);
     }*/
 
-    AVCodecContext *audio_codec_ctx;
-    AVCodecContext *video_codec_ctx;
+    MyAVCodecContext audio_codec_ctx;
+    MyAVCodecContext video_codec_ctx;
 
     // https://ffmpeg.org/doxygen/trunk/transcode_aac_8c-example.html#_a2
     // https://ffmpeg.org/doxygen/trunk/filtering_audio_8c-example.html#_a4
@@ -157,42 +177,25 @@ export int main() {
     std::cout << "audio stream: " << audio_stream_index
               << " video stream: " << video_stream_index << std::endl;
 
-    audio_codec_ctx = avcodec_alloc_context3(audio_codec.get());
-    if (!audio_codec_ctx) {
-      av_log(NULL, AV_LOG_ERROR, "could not allocate audio codec context\n");
-      return 1;
-    }
+    audio_codec_ctx = my_avcodec_alloc_context3(audio_codec);
+    video_codec_ctx = my_avcodec_alloc_context3(video_codec);
 
-    video_codec_ctx = avcodec_alloc_context3(video_codec.get());
-    if (!video_codec_ctx) {
-      av_log(NULL, AV_LOG_ERROR, "could not allocate video codec context\n");
-      return 1;
-    }
-
-    ret = avcodec_parameters_to_context(
+    my_avcodec_parameters_to_context(
         audio_codec_ctx,
-        av_format_context->streams[audio_stream_index]->codecpar);
-    if (ret < 0) {
-      av_log(NULL, AV_LOG_ERROR, "failed to add parameters to audio context\n");
-      return ret;
-    }
-
-    ret = avcodec_parameters_to_context(
+        av_format_context, audio_stream_index);
+   
+   my_avcodec_parameters_to_context(
         video_codec_ctx,
-        av_format_context->streams[video_stream_index]->codecpar);
-    if (ret < 0) {
-      av_log(NULL, AV_LOG_ERROR, "failed to add parameters to video context\n");
-      return ret;
-    }
-
-    if (avcodec_open2(audio_codec_ctx, audio_codec.get(), NULL) < 0) {
+        av_format_context, video_stream_index);
+   
+    if (avcodec_open2(audio_codec_ctx.get(), audio_codec.get(), NULL) < 0) {
       av_log(NULL, AV_LOG_ERROR, "could not open audio decoder\n");
-      return ret;
+      return 1;
     }
 
-    if (avcodec_open2(video_codec_ctx, video_codec.get(), NULL) < 0) {
+    if (avcodec_open2(video_codec_ctx.get(), video_codec.get(), NULL) < 0) {
       av_log(NULL, AV_LOG_ERROR, "could not open video decoder\n");
-      return ret;
+      return 1;
     }
 
     std::cout << "works!" << std::endl;
@@ -200,7 +203,7 @@ export int main() {
     AVFilterContext *abuffersrc_ctx;
     AVFilterContext *abuffersink_ctx;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
-        av_format_context.get(), audio_codec_ctx, audio_stream_index);
+        av_format_context.get(), audio_codec_ctx.get(), audio_stream_index);
 
     AVFrame *audio_filter_frame = av_frame_alloc();
 
@@ -215,7 +218,7 @@ export int main() {
       // std::cout << "Read packet" << std::endl;
 
       if (packet->stream_index == video_stream_index) {
-        ret = avcodec_send_packet(video_codec_ctx, packet);
+        ret = avcodec_send_packet(video_codec_ctx.get(), packet);
         if (ret < 0) {
           av_log(NULL, AV_LOG_ERROR,
                  "Error while sending a packet to the video decoder\n");
@@ -223,7 +226,7 @@ export int main() {
         }
 
         while (ret >= 0) {
-          ret = avcodec_receive_frame(video_codec_ctx, video_frame);
+          ret = avcodec_receive_frame(video_codec_ctx.get(), video_frame);
           if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
           } else if (ret < 0) {
@@ -244,7 +247,7 @@ export int main() {
 
       // TODO FIXMe handle end of file correctly (flushing)
       if (packet->stream_index == audio_stream_index) {
-        ret = avcodec_send_packet(audio_codec_ctx, packet);
+        ret = avcodec_send_packet(audio_codec_ctx.get(), packet);
         if (ret < 0) {
           av_log(NULL, AV_LOG_ERROR,
                  "Error while sending a packet to the audio decoder\n");
@@ -252,7 +255,7 @@ export int main() {
         }
 
         while (ret >= 0) {
-          ret = avcodec_receive_frame(audio_codec_ctx, audio_frame);
+          ret = avcodec_receive_frame(audio_codec_ctx.get(), audio_frame);
           if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
           } else if (ret < 0) {
