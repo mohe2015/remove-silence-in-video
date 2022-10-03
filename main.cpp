@@ -1,4 +1,3 @@
-#include <memory>
 module;
 
 extern "C" {
@@ -185,15 +184,15 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret,
                              sizeof(args) - ret);
 
-  ret = avfilter_graph_create_filter(&abuffersrc_ctx, abuffersrc, "in", args,
-                                     NULL, filter_graph);
+  ret = avfilter_graph_create_filter(&abuffersrc_ctx, &abuffersrc, "in", args,
+                                     NULL, filter_graph.get());
   if (ret < 0) {
     av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
     exit(1);
   }
 
-  ret = avfilter_graph_create_filter(&abuffersink_ctx, abuffersink, "out", NULL,
-                                     NULL, filter_graph);
+  ret = avfilter_graph_create_filter(&abuffersink_ctx, &abuffersink, "out", NULL,
+                                     NULL, filter_graph.get());
   if (ret < 0) {
     av_log(NULL, AV_LOG_ERROR, "Cannot create null sink\n");
     exit(1);
@@ -209,14 +208,14 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   inputs->pad_idx = 0;
   inputs->next = NULL;
 
-  if ((ret = avfilter_graph_parse_ptr(filter_graph,
+  if ((ret = avfilter_graph_parse(filter_graph.get(),
                                       "silencedetect=noise=-40dB:duration=1",
-                                      &inputs, &outputs, NULL)) < 0) {
+                                      inputs.get(), outputs.get(), NULL)) < 0) {
     av_log(NULL, AV_LOG_ERROR, "Cannot parse filter graph\n");
     exit(1);
   }
 
-  if ((ret = avfilter_graph_config(filter_graph, NULL)) < 0) {
+  if ((ret = avfilter_graph_config(filter_graph.get(), NULL)) < 0) {
     av_log(NULL, AV_LOG_ERROR, "Cannot configure graph\n");
     exit(1);
   }
