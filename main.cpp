@@ -34,11 +34,11 @@ export void my_av_frame_free(AVFrame *av_frame) {
 }
 
 export void my_avfilter_graph_free(AVFilterGraph *filter_graph) {
-  avfilter_graph_free(&filter_graph);
+  //avfilter_graph_free(&filter_graph);
 }
 
 export void my_avfilter_inout_free(AVFilterInOut *filter_inout) {
-  avfilter_inout_free(&filter_inout);
+  //avfilter_inout_free(&filter_inout);
 }
 
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;
