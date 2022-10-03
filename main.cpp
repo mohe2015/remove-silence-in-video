@@ -77,6 +77,9 @@ export std::tuple<int, MyAVCodec> my_av_find_best_stream(MyAVFormatContext av_fo
 
 export MyAVCodecContext my_avcodec_alloc_context3(MyAVCodec av_codec) {
   AVCodecContext * codec_context = avcodec_alloc_context3(av_codec.get());
+  if (codec_context == nullptr) {
+    throw std::string("avcodec_alloc_context3 failed");
+  }
   return MyAVCodecContext(codec_context, &my_avcodec_free_context);
 }
 
@@ -98,11 +101,17 @@ export void my_avcodec_open2(MyAVCodecContext codec_context, MyAVCodec codec) {
 
 export MyAVPacket my_av_packet_alloc() {
   AVPacket* packet = av_packet_alloc();
+   if (packet == nullptr) {
+    throw std::string("av_packet_alloc failed");
+  }
   return MyAVPacket(packet, &my_av_packet_free);
 }
 
 export MyAVFrame my_av_frame_alloc() {
   AVFrame* frame = av_frame_alloc();
+   if (frame == nullptr) {
+    throw std::string("av_frame_alloc failed");
+  }
   return MyAVFrame(frame, &my_av_frame_free);
 }
 
@@ -134,11 +143,19 @@ export bool my_avcodec_receive_frame(MyAVCodecContext codec_context, MyAVFrame f
 }
 
 export MyAVFilterGraph my_avfilter_graph_alloc() {
-  return MyAVFilterGraph(avfilter_graph_alloc(), my_avfilter_graph_free);
+  AVFilterGraph* filter_graph = avfilter_graph_alloc();
+   if (filter_graph == nullptr) {
+    throw std::string("avfilter_graph_alloc failed");
+  }
+  return MyAVFilterGraph(filter_graph, my_avfilter_graph_free);
 }
 
 export MyAVFilterInOut my_avfilter_inout_alloc() {
-  return MyAVFilterInOut(avfilter_inout_alloc(), my_avfilter_inout_free);
+  AVFilterInOut* filter_inout = avfilter_inout_alloc();
+   if (filter_inout == nullptr) {
+    throw std::string("avfilter_inout_alloc failed");
+  }
+  return MyAVFilterInOut(filter_inout, my_avfilter_inout_free);
 }
 
 export const AVFilter& my_avfilter_get_by_name(std::string name) {
