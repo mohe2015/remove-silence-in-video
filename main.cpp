@@ -38,7 +38,7 @@ export void my_avfilter_graph_free(AVFilterGraph *filter_graph) {
 }
 
 export void my_avfilter_inout_free(AVFilterInOut *filter_inout) {
-  avfilter_inout_free(&filter_inout);
+  //avfilter_inout_free(&filter_inout);
 }
 
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;

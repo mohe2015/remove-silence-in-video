@@ -4,7 +4,7 @@ all: compile
 # https://clang.llvm.org/docs/StandardCPlusPlusModules.html
 compile:
 	#clang++ -g -ggdb -Og -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. -x c++-module lib.cpp --precompile -o lib.pcm
-	clang++ -g -ggdb -Og -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.cpp -c -o main.o
+	clang++ -Weverything -Wpedantic -g -ggdb -Og -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.cpp -c -o main.o
 	#clang++ -g -ggdb -Og -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. lib.pcm -c -o lib.o
 	clang++ -g -ggdb -Og -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.o -lavformat -lavcodec -lavutil -lavfilter -o main # lib.o
 
