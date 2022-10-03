@@ -178,7 +178,6 @@ static MyAVFilterInOut my_avfilter_inout_alloc(MyAVFilterGraph graph) {
   if (filter_inout == nullptr) {
     throw std::string("avfilter_inout_alloc failed");
   }
-  // TODO FIXME use graph
   return MyAVFilterInOut(filter_inout, my_avfilter_inout_free);
 }
 
@@ -255,16 +254,6 @@ static void my_av_buffersrc_add_frame(MyAVFilterContext filter_context,
   }
 }
 
-/*
-static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src,
-MyAVFrame frame) {
-
-}
-*/
-
-// https://ffmpeg.org/
-// https://ffmpeg.org/ffmpeg.html
-
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
                   MyAVCodecContext audio_codec_context,
@@ -317,8 +306,6 @@ build_filter_tree(MyAVFormatContext format_context,
 
 export int main() {
   try {
-    int ret = 0;
-
     std::string filename = "file:test.mp4";
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
@@ -372,7 +359,6 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
 
     while (my_av_read_frame(av_format_context, packet)) {
-      // std::cout << "Read packet" << std::endl;
 
       if (packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
@@ -405,51 +391,11 @@ export int main() {
             if (silence_end != nullptr) {
               std::cout << "silence_end: " << silence_end->value << std::endl;
             }
-
-            /*char *buffer = nullptr;
-            if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
-                                   ';') < 0) {
-              av_log(nullptr, AV_LOG_ERROR, "failed extracting dictionary\n");
-              break;
-            }
-            std::cout << buffer << std::flush;*/
-
-            // lavfi.silence_start
-            // lavfi.silence_end
           }
         }
       }
     }
 
-    // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html
-
-    /*
-        int last_position = 0;
-        int position = 0;
-        while (true) {
-            // maybe still read the whole file to do the audio analysis as the
-       data is probably combined in the stream?
-
-            // AVFMT_SEEK_TO_PTS
-
-            // apparently because of b-keyframes frames would not need to be in
-       order (pts vs dts) so maybe
-            // this method is better than manually?
-            if (avformat_seek_file(av_format_context, 0, last_position,
-       position, std::numeric_limits<int64_t>::max(), 0) < 0) { av_log(nullptr,
-       AV_LOG_ERROR, "Failed to seek\n"); return ret;
-            }
-            AVPacket* av_packet = av_packet_alloc();
-            if (av_read_frame(av_format_context, av_packet) != 0) {
-                av_log(nullptr, AV_LOG_ERROR, "Failed to read frame\n");
-                return ret;
-            }
-
-            std::cout << "position: " << av_packet->dts << std::endl;
-            last_position = position + 1;
-            position = av_packet->dts + 1;
-        }
-    */
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
 
