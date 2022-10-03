@@ -34,11 +34,11 @@ export void my_av_frame_free(AVFrame *av_frame) {
 }
 
 export void my_avfilter_graph_free(AVFilterGraph *filter_graph) {
-  //avfilter_graph_free(&filter_graph);
+  avfilter_graph_free(&filter_graph);
 }
 
 export void my_avfilter_inout_free(AVFilterInOut *filter_inout) {
-  //avfilter_inout_free(&filter_inout);
+  avfilter_inout_free(&filter_inout);
 }
 
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;
@@ -48,6 +48,7 @@ export using MyAVPacket = std::shared_ptr<AVPacket>;
 export using MyAVFrame = std::shared_ptr<AVFrame>;
 export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
 export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
+export using MyAVFilterContext = std::shared_ptr<AVFilterContext>;
 
 export MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context = nullptr;
@@ -150,11 +151,12 @@ export MyAVFilterGraph my_avfilter_graph_alloc() {
   return MyAVFilterGraph(filter_graph, my_avfilter_graph_free);
 }
 
-export MyAVFilterInOut my_avfilter_inout_alloc() {
+export MyAVFilterInOut my_avfilter_inout_alloc(MyAVFilterGraph graph) {
   AVFilterInOut* filter_inout = avfilter_inout_alloc();
    if (filter_inout == nullptr) {
     throw std::string("avfilter_inout_alloc failed");
   }
+  // TODO FIXME use graph
   return MyAVFilterInOut(filter_inout, my_avfilter_inout_free);
 }
 
@@ -166,6 +168,15 @@ export const AVFilter& my_avfilter_get_by_name(std::string name) {
   return *filter;
 }
 
+export MyAVFilterContext my_avfilter_graph_create_filter(const AVFilter &filter, std::string name, std::string args, MyAVFilterGraph graph) {
+  AVFilterContext *filter_context = nullptr;
+  int ret = avfilter_graph_create_filter(&filter_context, &filter, name.c_str(), args.c_str(), nullptr, graph.get());
+  if (ret < 0) {
+    throw std::string("my_avfilter_graph_create_filter failed");
+  }
+  return MyAVFilterContext(graph, filter_context);
+}
+
 /*
 export void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFrame frame) {
 
@@ -175,19 +186,17 @@ export void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFr
 // https://ffmpeg.org/
 // https://ffmpeg.org/ffmpeg.html
 
-std::tuple<AVFilterContext *, AVFilterContext *>
+std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
   char args[512]; // uff
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
   const AVFilter &abuffersink = my_avfilter_get_by_name("abuffersink");
-  AVFilterContext *abuffersrc_ctx = nullptr;
-  AVFilterContext *abuffersink_ctx = nullptr;
 
-  MyAVFilterInOut outputs = my_avfilter_inout_alloc();
-  MyAVFilterInOut inputs = my_avfilter_inout_alloc();
   MyAVFilterGraph filter_graph = my_avfilter_graph_alloc();
+  MyAVFilterInOut outputs = my_avfilter_inout_alloc(filter_graph);
+  MyAVFilterInOut inputs = my_avfilter_inout_alloc(filter_graph);
 
   if (audio_codec_context->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
     av_channel_layout_default(&audio_codec_context->ch_layout,
@@ -201,27 +210,17 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   av_channel_layout_describe(&audio_codec_context->ch_layout, args + ret,
                              sizeof(args) - ret);
 
-  ret = avfilter_graph_create_filter(&abuffersrc_ctx, &abuffersrc, "in", args,
-                                     NULL, filter_graph.get());
-  if (ret < 0) {
-    av_log(NULL, AV_LOG_ERROR, "Cannot create audio buffer source\n");
-    exit(1);
-  }
+  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::string(args), filter_graph);
 
-  ret = avfilter_graph_create_filter(&abuffersink_ctx, &abuffersink, "out", NULL,
-                                     NULL, filter_graph.get());
-  if (ret < 0) {
-    av_log(NULL, AV_LOG_ERROR, "Cannot create null sink\n");
-    exit(1);
-  }
+  MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(abuffersink, "out", nullptr, filter_graph);
 
   outputs->name = av_strdup("in");
-  outputs->filter_ctx = abuffersrc_ctx;
+  outputs->filter_ctx = abuffersrc_ctx.get();
   outputs->pad_idx = 0;
   outputs->next = NULL;
 
   inputs->name = av_strdup("out");
-  inputs->filter_ctx = abuffersink_ctx;
+  inputs->filter_ctx = abuffersink_ctx.get();
   inputs->pad_idx = 0;
   inputs->next = NULL;
 
@@ -289,8 +288,8 @@ export int main() {
 
     std::cout << "works!" << std::endl;
 
-    AVFilterContext *abuffersrc_ctx = nullptr;
-    AVFilterContext *abuffersink_ctx = nullptr;
+    MyAVFilterContext abuffersrc_ctx = nullptr;
+    MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
         av_format_context.get(), audio_codec_ctx.get(), audio_stream_index);
 
@@ -323,7 +322,7 @@ export int main() {
           // std::cout << "Decoded" << std::endl;
 
           // push the audio data from decoded frame into the filtergraph
-          if (av_buffersrc_add_frame_flags(abuffersrc_ctx, audio_frame.get(),
+          if (av_buffersrc_add_frame_flags(abuffersrc_ctx.get(), audio_frame.get(),
                                             AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
             av_log(NULL, AV_LOG_ERROR,
                     "Error while feeding the audio filtergraph\n");
@@ -333,7 +332,7 @@ export int main() {
           // pull filtered audio from the filtergraph
           while (1) {
             ret =
-                av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame);
+                av_buffersink_get_frame(abuffersink_ctx.get(), audio_filter_frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
               break;
             if (ret < 0)
