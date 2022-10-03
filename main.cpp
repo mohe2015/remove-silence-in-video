@@ -32,16 +32,14 @@ static void my_av_packet_free(AVPacket *av_packet) {
   av_packet_free(&av_packet);
 }
 
-static void my_av_frame_free(AVFrame *av_frame) {
-  av_frame_free(&av_frame);
-}
+static void my_av_frame_free(AVFrame *av_frame) { av_frame_free(&av_frame); }
 
 static void my_avfilter_graph_free(AVFilterGraph *filter_graph) {
   avfilter_graph_free(&filter_graph);
 }
 
 static void my_avfilter_inout_free(AVFilterInOut *filter_inout) {
-  //avfilter_inout_free(&filter_inout);
+  // avfilter_inout_free(&filter_inout);
 }
 
 export using MyAVFormatContext = std::shared_ptr<AVFormatContext>;
@@ -55,8 +53,8 @@ export using MyAVFilterContext = std::shared_ptr<AVFilterContext>;
 
 static MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context = nullptr;
-  int ret =
-      avformat_open_input(&av_format_context, filename.c_str(), nullptr, nullptr);
+  int ret = avformat_open_input(&av_format_context, filename.c_str(), nullptr,
+                                nullptr);
   if (ret != 0) {
     throw std::string("avformat_open_input failed");
   }
@@ -70,9 +68,12 @@ static void my_avformat_find_stream_info(MyAVFormatContext av_format_context) {
   }
 }
 
-static std::tuple<int, MyAVCodec> my_av_find_best_stream(MyAVFormatContext av_format_context, AVMediaType av_media_type) {
+static std::tuple<int, MyAVCodec>
+my_av_find_best_stream(MyAVFormatContext av_format_context,
+                       AVMediaType av_media_type) {
   const AVCodec *av_codec = nullptr;
-  int ret = av_find_best_stream(av_format_context.get(), av_media_type, -1, -1, &av_codec, 0);
+  int ret = av_find_best_stream(av_format_context.get(), av_media_type, -1, -1,
+                                &av_codec, 0);
   if (ret < 0) {
     throw std::string("av_find_best_stream failed");
   }
@@ -80,17 +81,19 @@ static std::tuple<int, MyAVCodec> my_av_find_best_stream(MyAVFormatContext av_fo
 }
 
 static MyAVCodecContext my_avcodec_alloc_context3(MyAVCodec av_codec) {
-  AVCodecContext * codec_context = avcodec_alloc_context3(av_codec.get());
+  AVCodecContext *codec_context = avcodec_alloc_context3(av_codec.get());
   if (codec_context == nullptr) {
     throw std::string("avcodec_alloc_context3 failed");
   }
   return MyAVCodecContext(codec_context, &my_avcodec_free_context);
 }
 
-static void my_avcodec_parameters_to_context(MyAVCodecContext codec_ctx, MyAVFormatContext av_format_context, int stream_index) {
+static void
+my_avcodec_parameters_to_context(MyAVCodecContext codec_ctx,
+                                 MyAVFormatContext av_format_context,
+                                 int stream_index) {
   int ret = avcodec_parameters_to_context(
-        codec_ctx.get(),
-        av_format_context->streams[stream_index]->codecpar);
+      codec_ctx.get(), av_format_context->streams[stream_index]->codecpar);
   if (ret < 0) {
     throw std::string("avcodec_parameters_to_context failed");
   }
@@ -104,22 +107,23 @@ static void my_avcodec_open2(MyAVCodecContext codec_context, MyAVCodec codec) {
 }
 
 static MyAVPacket my_av_packet_alloc() {
-  AVPacket* packet = av_packet_alloc();
-   if (packet == nullptr) {
+  AVPacket *packet = av_packet_alloc();
+  if (packet == nullptr) {
     throw std::string("av_packet_alloc failed");
   }
   return MyAVPacket(packet, &my_av_packet_free);
 }
 
 static MyAVFrame my_av_frame_alloc() {
-  AVFrame* frame = av_frame_alloc();
-   if (frame == nullptr) {
+  AVFrame *frame = av_frame_alloc();
+  if (frame == nullptr) {
     throw std::string("av_frame_alloc failed");
   }
   return MyAVFrame(frame, &my_av_frame_free);
 }
 
-static bool my_av_read_frame(MyAVFormatContext av_format_context, MyAVPacket av_packet) {
+static bool my_av_read_frame(MyAVFormatContext av_format_context,
+                             MyAVPacket av_packet) {
   av_packet_unref(av_packet.get());
   int ret = av_read_frame(av_format_context.get(), av_packet.get());
   if (ret != 0) {
@@ -128,14 +132,16 @@ static bool my_av_read_frame(MyAVFormatContext av_format_context, MyAVPacket av_
   return true;
 }
 
-static void my_avcodec_send_packet(MyAVCodecContext codec_context, MyAVPacket packet) {
+static void my_avcodec_send_packet(MyAVCodecContext codec_context,
+                                   MyAVPacket packet) {
   int ret = avcodec_send_packet(codec_context.get(), packet.get());
   if (ret != 0) {
     throw std::string("avcodec_send_packet failed");
   }
 }
 
-static bool my_avcodec_receive_frame(MyAVCodecContext codec_context, MyAVFrame frame) {
+static bool my_avcodec_receive_frame(MyAVCodecContext codec_context,
+                                     MyAVFrame frame) {
   int ret = avcodec_receive_frame(codec_context.get(), frame.get());
   if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
     return false;
@@ -147,41 +153,49 @@ static bool my_avcodec_receive_frame(MyAVCodecContext codec_context, MyAVFrame f
 }
 
 static MyAVFilterGraph my_avfilter_graph_alloc() {
-  AVFilterGraph* filter_graph = avfilter_graph_alloc();
-   if (filter_graph == nullptr) {
+  AVFilterGraph *filter_graph = avfilter_graph_alloc();
+  if (filter_graph == nullptr) {
     throw std::string("avfilter_graph_alloc failed");
   }
   return MyAVFilterGraph(filter_graph, my_avfilter_graph_free);
 }
 
 static MyAVFilterInOut my_avfilter_inout_alloc(MyAVFilterGraph graph) {
-  AVFilterInOut* filter_inout = avfilter_inout_alloc();
-   if (filter_inout == nullptr) {
+  AVFilterInOut *filter_inout = avfilter_inout_alloc();
+  if (filter_inout == nullptr) {
     throw std::string("avfilter_inout_alloc failed");
   }
   // TODO FIXME use graph
   return MyAVFilterInOut(filter_inout, my_avfilter_inout_free);
 }
 
-static const AVFilter& my_avfilter_get_by_name(std::string name) {
-  const AVFilter* filter = avfilter_get_by_name(name.c_str());
+static const AVFilter &my_avfilter_get_by_name(std::string name) {
+  const AVFilter *filter = avfilter_get_by_name(name.c_str());
   if (filter == nullptr) {
     throw std::string("avfilter_get_by_name failed");
   }
   return *filter;
 }
 
-static MyAVFilterContext my_avfilter_graph_create_filter(const AVFilter &filter, std::string name, std::optional<std::string> args, MyAVFilterGraph graph) {
+static MyAVFilterContext
+my_avfilter_graph_create_filter(const AVFilter &filter, std::string name,
+                                std::optional<std::string> args,
+                                MyAVFilterGraph graph) {
   AVFilterContext *filter_context = nullptr;
-  int ret = avfilter_graph_create_filter(&filter_context, &filter, name.c_str(), args.has_value() ? args->c_str() : nullptr, nullptr, graph.get());
+  int ret = avfilter_graph_create_filter(
+      &filter_context, &filter, name.c_str(),
+      args.has_value() ? args->c_str() : nullptr, nullptr, graph.get());
   if (ret < 0) {
     throw std::string("my_avfilter_graph_create_filter failed");
   }
   return MyAVFilterContext(graph, filter_context);
 }
 
-static void my_avfilter_graph_parse(MyAVFilterGraph graph, std::string filters, MyAVFilterInOut inputs, MyAVFilterInOut outputs) {
-  int ret = avfilter_graph_parse(graph.get(), filters.c_str(), inputs.get(), outputs.get(), nullptr);
+static void my_avfilter_graph_parse(MyAVFilterGraph graph, std::string filters,
+                                    MyAVFilterInOut inputs,
+                                    MyAVFilterInOut outputs) {
+  int ret = avfilter_graph_parse(graph.get(), filters.c_str(), inputs.get(),
+                                 outputs.get(), nullptr);
   if (ret != 0) {
     throw std::string("avfilter_graph_parse failed");
   }
@@ -195,7 +209,8 @@ static void my_avfilter_graph_config(MyAVFilterGraph graph) {
 }
 
 /*
-static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFrame frame) {
+static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src,
+MyAVFrame frame) {
 
 }
 */
@@ -204,7 +219,8 @@ static void my_av_buffersrc_add_frame_flags(MyAVFilterContext buffer_src, MyAVFr
 // https://ffmpeg.org/ffmpeg.html
 
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
-build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_context, int audio_stream_index) {
+build_filter_tree(AVFormatContext *format_context,
+                  AVCodecContext *audio_codec_context, int audio_stream_index) {
   AVRational time_base = format_context->streams[audio_stream_index]->time_base;
 
   const AVFilter &abuffersrc = my_avfilter_get_by_name("abuffer");
@@ -219,7 +235,11 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
                               audio_codec_context->ch_layout.nb_channels);
   }
   std::ostringstream argsstream;
-  argsstream << "time_base=" << time_base.num << "/" << time_base.den << ":sample_rate=" << audio_codec_context->sample_rate << ":sample_fmt=" << av_get_sample_fmt_name(audio_codec_context->sample_fmt) << ":channel_layout=";
+  argsstream << "time_base=" << time_base.num << "/" << time_base.den
+             << ":sample_rate=" << audio_codec_context->sample_rate
+             << ":sample_fmt="
+             << av_get_sample_fmt_name(audio_codec_context->sample_fmt)
+             << ":channel_layout=";
 
   AVBPrint layout;
   av_bprint_init(&layout, 0, AV_BPRINT_SIZE_UNLIMITED);
@@ -230,9 +250,11 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
 
   std::string args = argsstream.str();
 
-  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(abuffersrc, "in", std::optional(args), filter_graph);
+  MyAVFilterContext abuffersrc_ctx = my_avfilter_graph_create_filter(
+      abuffersrc, "in", std::optional(args), filter_graph);
 
-  MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(abuffersink, "out", std::optional<std::string>(), filter_graph);
+  MyAVFilterContext abuffersink_ctx = my_avfilter_graph_create_filter(
+      abuffersink, "out", std::optional<std::string>(), filter_graph);
 
   outputs->name = av_strdup("in");
   outputs->filter_ctx = abuffersrc_ctx.get();
@@ -244,8 +266,9 @@ build_filter_tree(AVFormatContext *format_context, AVCodecContext *audio_codec_c
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-40dB:duration=1", inputs, outputs);
-  
+  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-40dB:duration=1",
+                          inputs, outputs);
+
   my_avfilter_graph_config(filter_graph);
 
   return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
@@ -274,11 +297,13 @@ export int main() {
     // TODO FIXME maybe use same for audio and video stream
     MyAVCodec audio_codec;
     int audio_stream_index;
-    std::tie(audio_stream_index, audio_codec) = my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO);
+    std::tie(audio_stream_index, audio_codec) =
+        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO);
 
     MyAVCodec video_codec;
     int video_stream_index;
-    std::tie(video_stream_index, video_codec) = my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO);
+    std::tie(video_stream_index, video_codec) =
+        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO);
 
     std::cout << "audio stream: " << audio_stream_index
               << " video stream: " << video_stream_index << std::endl;
@@ -286,14 +311,12 @@ export int main() {
     audio_codec_ctx = my_avcodec_alloc_context3(audio_codec);
     video_codec_ctx = my_avcodec_alloc_context3(video_codec);
 
-    my_avcodec_parameters_to_context(
-        audio_codec_ctx,
-        av_format_context, audio_stream_index);
-   
-    my_avcodec_parameters_to_context(
-        video_codec_ctx,
-        av_format_context, video_stream_index);
-   
+    my_avcodec_parameters_to_context(audio_codec_ctx, av_format_context,
+                                     audio_stream_index);
+
+    my_avcodec_parameters_to_context(video_codec_ctx, av_format_context,
+                                     video_stream_index);
+
     my_avcodec_open2(audio_codec_ctx, audio_codec);
 
     my_avcodec_open2(video_codec_ctx, video_codec);
@@ -334,17 +357,18 @@ export int main() {
           // std::cout << "Decoded" << std::endl;
 
           // push the audio data from decoded frame into the filtergraph
-          if (av_buffersrc_add_frame_flags(abuffersrc_ctx.get(), audio_frame.get(),
-                                            AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
+          if (av_buffersrc_add_frame_flags(abuffersrc_ctx.get(),
+                                           audio_frame.get(),
+                                           AV_BUFFERSRC_FLAG_KEEP_REF) < 0) {
             av_log(nullptr, AV_LOG_ERROR,
-                    "Error while feeding the audio filtergraph\n");
+                   "Error while feeding the audio filtergraph\n");
             break;
           }
 
           // pull filtered audio from the filtergraph
           while (1) {
-            ret =
-                av_buffersink_get_frame(abuffersink_ctx.get(), audio_filter_frame);
+            ret = av_buffersink_get_frame(abuffersink_ctx.get(),
+                                          audio_filter_frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
               break;
             if (ret < 0)
@@ -353,7 +377,7 @@ export int main() {
             // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html
             char *buffer = nullptr;
             if (av_dict_get_string(audio_filter_frame->metadata, &buffer, '=',
-                                    ';') < 0) {
+                                   ';') < 0) {
               av_log(nullptr, AV_LOG_ERROR, "failed extracting dictionary\n");
               break;
             }
@@ -362,7 +386,7 @@ export int main() {
             // "lavfi.silence_start"
 
             av_frame_unref(audio_filter_frame);
-          }          
+          }
         }
       }
     }
