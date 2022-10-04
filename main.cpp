@@ -12,14 +12,16 @@ extern "C" {
 }
 
 export module main;
-export import <string>;
-export import <memory>;
-export import <iostream>;
-export import <limits>;
-export import <tuple>;
-export import <memory>;
+import <string>;
+import <memory>;
+import <iostream>;
+import <limits>;
+import <tuple>;
+import <memory>;
 import <optional>;
 import <sstream>;
+import <set>;
+import <map>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -370,14 +372,17 @@ export int main() {
 
     AVRational audio_time_base = av_format_context->streams[audio_stream_index]->time_base;
 
+    std::set<int64_t> keyframe_locations;
+    std::map<int64_t, MyAVPacket> frames;
+
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
-          std::cout << "Keyframe detected " << video_frame->key_frame << " "
-                    << video_frame->pts << std::endl;
+          //std::cout << "Keyframe detected " << video_frame->key_frame << " " << video_frame->pts << std::endl;
+          keyframe_locations.insert(video_frame->pts);
         }
       }
 
@@ -399,14 +404,19 @@ export int main() {
               long double silence_start_double = std::stod(std::string(silence_start->value));
               std::cout << "silence_start: " << llroundl(silence_start_double / av_q2d(audio_time_base))
                         << std::endl;
+
+              // TODO copy file from last silence end until this silence start
             }
             if (silence_end != nullptr) {
+              // this conversion is terrible
               long double silence_end_double = std::stod(std::string(silence_end->value));
-                            std::cout << "test2 " << audio_time_base.den << "jo" << audio_time_base.num << std::endl;
               std::cout << "silence_end: " << llroundl(silence_end_double / av_q2d(audio_time_base)) << std::endl;
+
+              // render file from last keyframe to this silence end, then write keyframe.
             }
 
-             std::cout << "audio filtered until: " << audio_filter_frame->pts << std::endl;
+            // the problem is the silence start is sent later so we can't use this at all
+            // std::cout << "audio filtered until: " << audio_filter_frame->pts << std::endl;
           }
         }
       }
