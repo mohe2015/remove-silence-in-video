@@ -413,6 +413,7 @@ export int main() {
               std::cout << "silence_end: " << llroundl(silence_end_double / av_q2d(audio_time_base)) << std::endl;
 
               // render file from last keyframe to this silence end, then write keyframe.
+              // maybe the keyframe could be before the last silence_start?
             }
 
             // the problem is the silence start is sent later so we can't use this at all
