@@ -368,6 +368,8 @@ export int main() {
 
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
 
+    AVRational audio_time_base = av_format_context->streams[audio_stream_index]->time_base;
+
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
@@ -394,16 +396,29 @@ export int main() {
                 audio_filter_frame->metadata, "lavfi.silence_end", nullptr, 0);
 
             if (silence_start != nullptr) {
-              std::cout << "silence_start: " << silence_start->value
+              long double silence_start_double = std::stod(std::string(silence_start->value));
+              std::cout << "silence_start: " << llroundl(silence_start_double / av_q2d(audio_time_base))
                         << std::endl;
             }
             if (silence_end != nullptr) {
-              std::cout << "silence_end: " << silence_end->value << std::endl;
+              long double silence_end_double = std::stod(std::string(silence_end->value));
+                            std::cout << "test2 " << audio_time_base.den << "jo" << audio_time_base.num << std::endl;
+              std::cout << "silence_end: " << llroundl(silence_end_double / av_q2d(audio_time_base)) << std::endl;
             }
+
+             std::cout << "audio filtered until: " << audio_filter_frame->pts << std::endl;
           }
         }
       }
     }
+
+    // we would need to seek in the input file to the keyframe (which should be fast)
+    // then we decode from there on until the place we need a keyframe of
+    // then we encode that keyframe
+    // then we copy the rest of the input file
+
+    // maybe we simply cache the raw packets since the last keyframe and since the last audio filter response (for now maybe just cache everything?)
+    // for now just cache the whole file
 
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
