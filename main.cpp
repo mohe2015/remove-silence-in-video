@@ -584,9 +584,12 @@ export int main() {
       std::cout << "handling silence: " << silence.first << " - "
                 << silence.second << std::endl;
 
+      std::vector<std::pair<std::pair<int64_t, int64_t>, MyAVPacket>> sorted(frames.lower_bound(std::make_pair(rendered_until, 0)), frames.upper_bound(std::make_pair(silence.first, 2/*TODO FIXME this is wrong*/)));
+      std::sort(sorted.begin(), sorted.end(), 
+          [](std::pair<std::pair<int64_t, int64_t>, MyAVPacket> a, std::pair<std::pair<int64_t, int64_t>, MyAVPacket> b) { return b.second->dts > a.second->dts; });
+
       // copy from last until silence_start
-      for (auto p = frames.lower_bound(std::make_pair(rendered_until, 0));
-           p != frames.upper_bound(std::make_pair(silence.first, 2/*TODO FIXME this is wrong*/)); ++p) {
+      for (auto p : sorted) {
         /*if (p->second->stream_index == audio_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p->second);
           av_packet_rescale_ts(
@@ -600,8 +603,8 @@ export int main() {
           my_av_interleaved_write_frame(output_format_context, packet);
         }*/
 
-        if (p->second->stream_index == video_stream_index) {
-          MyAVPacket packet = my_av_packet_clone(p->second);
+        if (p.second->stream_index == video_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
           packet->pos = -1;
           packet->stream_index = 1;
           packet->dts -= dts_difference;
