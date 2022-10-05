@@ -1,5 +1,7 @@
 module;
 
+// https://www.youtube.com/results?search_query=audio+video+sync+test
+
 extern "C" {
 #include <cassert>
 #include <libavcodec/avcodec.h>
@@ -24,6 +26,8 @@ import <sstream>;
 import <set>;
 import <map>;
 import <cmath>;
+import <vector>;
+import <utility>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -322,11 +326,11 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
   }
 }
 
-static void my_av_write_frame(MyAVFormatContext format_context,
-                              MyAVPacket packet) {
-  int ret = av_write_frame(format_context.get(), packet.get());
+static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
+                                          MyAVPacket packet) {
+  int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
-    throw std::string("av_write_frame failed");
+    throw std::string("av_interleaved_write_frame failed");
   }
 }
 
@@ -387,8 +391,8 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-40dB:duration=1",
-                          inputs, outputs);
+  my_avfilter_graph_parse(
+      filter_graph, "silencedetect=noise=-25dB:duration=0.25", inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
 
@@ -415,7 +419,10 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
 
 export int main() {
   try {
-    std::string filename = "file:test.mp4";
+    std::string filename = "file:c1_2.mp4";
+    std::string output_filename = "file:c1_2-output.mp4";
+    std::string format = "mp4";
+
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
     my_avformat_find_stream_info(av_format_context);
@@ -432,6 +439,9 @@ export int main() {
     std::tie(video_stream_index, video_codec_ctx) =
         get_decoder(av_format_context, AVMEDIA_TYPE_VIDEO);
 
+    std::cout << "video stream index: " << video_stream_index
+              << " audio stream index: " << audio_stream_index << std::endl;
+
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
@@ -439,7 +449,6 @@ export int main() {
 
     MyAVFrame audio_filter_frame = my_av_frame_alloc();
 
-    // AVPacketList
     MyAVPacket packet = my_av_packet_alloc();
     MyAVFrame audio_frame = my_av_frame_alloc();
     MyAVFrame video_frame = my_av_frame_alloc();
@@ -449,17 +458,19 @@ export int main() {
     AVRational audio_time_base =
         av_format_context->streams[audio_stream_index]->time_base;
 
-    std::set<int64_t> keyframe_locations;
-    std::map<int64_t, MyAVPacket> frames;
+    AVRational video_time_base =
+        av_format_context->streams[video_stream_index]->time_base;
 
-    // https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html
-    // https://ffmpeg.org/doxygen/trunk/remuxing_8c-example.html#a48
+    // these are really different
+    std::cout << audio_time_base.num << "/" << audio_time_base.den << std::endl;
+    std::cout << video_time_base.num << "/" << video_time_base.den << std::endl;
+
     std::cout << av_format_context->iformat->name << std::endl;
 
     MyAVFormatContext output_format_context =
-        my_avformat_alloc_output_context2("mp4");
+        my_avformat_alloc_output_context2(format.c_str());
 
-    MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
+    MyAVIOContext output_io_context = my_avio_open(output_filename.c_str());
 
     if (output_format_context->oformat->flags & AVFMT_NOFILE) {
       throw new std::string("AVFMT_NOFILE");
@@ -481,11 +492,40 @@ export int main() {
         av_format_context->streams[video_stream_index]->codecpar);
     output_video_stream->codecpar->codec_tag = 0;
 
-    av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
+    av_dump_format(output_format_context.get(), 0, output_filename.c_str(), 1);
 
     my_avformat_write_header(output_format_context);
 
+    std::set<int64_t> keyframe_locations;
+    std::map<std::pair<double, int64_t>, MyAVPacket> frames;
+    std::vector<std::pair<double, double>> silences;
+
+    double last_silence_start = 0;
+
     while (my_av_read_frame(av_format_context, packet)) {
+      if (packet != nullptr) {
+        if (packet->stream_index == video_stream_index) {
+          // dts will be in order here (parsing order) which makes sense
+          // but the pts is not in order
+          // std::cout << "idx: " << packet->stream_index << " dts: " <<
+          // packet->dts << " pts: " << packet->pts << std::endl;
+        }
+
+        MyAVPacket cloned_packet = my_av_packet_clone(packet);
+        if (!frames
+                 // TODO FIXME make this more accurate by calculating inside the
+                 // rational first
+                 .emplace(std::make_pair(
+                              cloned_packet->pts *
+                                  av_q2d(av_format_context
+                                             ->streams[packet->stream_index]
+                                             ->time_base),
+                              cloned_packet->stream_index),
+                          cloned_packet)
+                 .second) {
+          throw std::string("duplicate");
+        }
+      }
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
@@ -504,7 +544,6 @@ export int main() {
           my_av_buffersrc_add_frame(abuffersrc_ctx, audio_frame);
 
           while (av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame)) {
-
             AVDictionaryEntry *silence_start =
                 av_dict_get(audio_filter_frame->metadata, "lavfi.silence_start",
                             nullptr, 0);
@@ -514,10 +553,12 @@ export int main() {
             if (silence_start != nullptr) {
               long double silence_start_double =
                   std::stod(std::string(silence_start->value));
-              std::cout << "silence_start: "
-                        << llroundl(silence_start_double /
-                                    av_q2d(audio_time_base))
-                        << std::endl;
+              // int64_t silence_start =
+              //     llroundl(silence_start_double / av_q2d(audio_time_base));
+              // std::cout << "silence_start: " << silence_start_double
+              //          << std::endl;
+
+              last_silence_start = silence_start_double;
 
               // TODO copy file from last silence end until this silence start
             }
@@ -525,10 +566,15 @@ export int main() {
               // this conversion is terrible
               long double silence_end_double =
                   std::stod(std::string(silence_end->value));
-              std::cout << "silence_end: "
-                        << llroundl(silence_end_double /
-                                    av_q2d(audio_time_base))
-                        << std::endl;
+              // int64_t silence_end =
+              //     llroundl(silence_end_double / av_q2d(audio_time_base));
+              // std::cout << "silence_end: " << silence_end_double <<
+              // std::endl;
+
+              silences.emplace_back(last_silence_start, silence_end_double);
+
+              // we probably can't immediately start rendering here because we
+              // currently have rounding bugs
 
               // render file from last keyframe to this silence end, then write
               // keyframe. maybe the keyframe could be before the last
@@ -538,30 +584,103 @@ export int main() {
             // the problem is the silence start is sent later so we can't use
             // this at all std::cout << "audio filtered until: " <<
             // audio_filter_frame->pts << std::endl;
+
+            // TODO FIXME improve the filter impl that it tells you until where
+            // it analyzed and returns time as integer maybe also let it send
+            // start and end in the end packet
           }
         }
       }
+    }
 
-      if (packet != nullptr && packet->stream_index == video_stream_index) {
-        MyAVPacket cloned_packet = my_av_packet_clone(packet);
-        av_packet_rescale_ts(
-            cloned_packet.get(),
-            av_format_context->streams[video_stream_index]->time_base,
-            output_video_stream->time_base);
-        cloned_packet->pos = -1;
-        cloned_packet->stream_index = 1;
-        my_av_write_frame(output_format_context, cloned_packet);
+    double rendered_until = 0;
+    double dts_difference = 0;
+    double pts_difference = 0;
+    for (auto silence : silences) {
+      // std::cout << "handling silence: " << silence.first << " - "
+      //           << silence.second << std::endl;
+
+      std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
+          frames.lower_bound(std::make_pair(rendered_until, 0)),
+          frames.upper_bound(
+              std::make_pair(silence.first, 2 /*TODO FIXME this is wrong*/)));
+      std::sort(sorted.begin(), sorted.end(),
+                [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
+                   std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
+                  return b.second->dts > a.second->dts;
+                });
+
+      // copy from last until silence_start
+      for (auto p : sorted) {
+        if (p.second->stream_index == audio_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
+
+          packet->pos = -1;
+          packet->stream_index = 0;
+
+          // TODO FIXME I'm pretty sure we need to do this in the original time
+          // units
+          packet->dts -= llroundl(
+              dts_difference /
+              av_q2d(
+                  av_format_context->streams[audio_stream_index]->time_base));
+          packet->pts -=
+              llroundl(pts_difference /
+                       av_q2d(av_format_context->streams[audio_stream_index]
+                                  ->time_base)) -
+              1;
+
+          av_packet_rescale_ts(
+              packet.get(),
+              av_format_context->streams[audio_stream_index]->time_base,
+              output_audio_stream->time_base);
+
+          // std::cout << "stream: " << 0 << " dts; " << packet->dts << " pts; "
+          // << packet->pts
+          //           << std::endl;
+
+          my_av_interleaved_write_frame(output_format_context, packet);
+        }
+
+        // 187285365
+
+        if (p.second->stream_index == video_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
+          packet->pos = -1;
+          packet->stream_index = 1;
+
+          // TODO FIXME I'm pretty sure we need to do this in the original time
+          // units
+          packet->dts -= llroundl(
+              dts_difference /
+              av_q2d(
+                  av_format_context->streams[video_stream_index]->time_base));
+          packet->pts -=
+              llroundl(pts_difference /
+                       av_q2d(av_format_context->streams[video_stream_index]
+                                  ->time_base)) -
+              1;
+
+          av_packet_rescale_ts(
+              packet.get(),
+              av_format_context->streams[video_stream_index]->time_base,
+              output_video_stream->time_base);
+
+          // std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; "
+          //           << packet->pts << std::endl;
+
+          // packets are out of order bruh
+
+          // dts need to be in order
+          my_av_interleaved_write_frame(output_format_context, packet);
+        }
       }
 
-      if (packet != nullptr && packet->stream_index == audio_stream_index) {
-        av_packet_rescale_ts(
-            packet.get(),
-            av_format_context->streams[audio_stream_index]->time_base,
-            output_audio_stream->time_base);
-        packet->pos = -1;
-        packet->stream_index = 0;
-        my_av_write_frame(output_format_context, packet);
-      }
+      // to create keyframe at silence_end we need to go from last keyframe
+      // before silence_end to silence_end
+      rendered_until = silence.second;
+      pts_difference += silence.second - silence.first - 0.0001; // hacky
+      dts_difference += silence.second - silence.first - 0.0001; // hacky
     }
 
     my_av_write_trailer(output_format_context);
@@ -574,22 +693,6 @@ export int main() {
     // maybe we simply cache the raw packets since the last keyframe and since
     // the last audio filter response (for now maybe just cache everything?) for
     // now just cache the whole file
-
-    // then streamcopy (or decode for partial keyframe shit)
-    // https://ffmpeg.org/ffmpeg-codecs.html
-
-    // https://ffmpeg.org/ffmpeg-filters.html#segment_002c-asegment
-
-    // https://ffmpeg.org/ffmpeg-filters.html
-    // atrim
-
-    // https://ffmpeg.org/ffmpeg-filters.html#Timeline-editing
-
-    // then encode
-
-    // https://ffmpeg.org/ffmpeg-filters.html#toc-concat
-
-    // and mux
 
     return 0;
   } catch (std::string error) {
