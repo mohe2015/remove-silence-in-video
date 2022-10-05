@@ -56,6 +56,7 @@ export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
 export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
 export using MyAVFilterContext = std::shared_ptr<AVFilterContext>;
 export using MyAVStream = std::shared_ptr<AVStream>;
+export using MyAVIOContext = std::shared_ptr<AVIOContext>;
 
 static MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context = nullptr;
@@ -294,19 +295,41 @@ static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
   return MyAVStream(format_context, stream);
 }
 
-static AVIOContext* my_avio_open(std::string url) {
+static MyAVIOContext my_avio_open(std::string url) {
+  // TODO FIXME lifetime shorter than MyAVFormatContext
   AVIOContext* io_context;
   int ret = avio_open(&io_context, url.c_str(), AVIO_FLAG_WRITE);
   if (ret < 0) {
     throw std::string("avio_open failed");
   }
-  return io_context;
+  return MyAVIOContext(io_context, avio_close);
 }
 
 static void my_avcodec_parameters_copy(AVCodecParameters* destination, const AVCodecParameters* source) {
   int ret = avcodec_parameters_copy(destination, source);
   if (ret < 0) {
     throw std::string("avcodec_parameters_copy failed");
+  }
+}
+
+static void my_avformat_write_header(MyAVFormatContext format_context) {
+  int ret = avformat_write_header(format_context.get(), nullptr);
+  if (ret < 0) {
+    throw std::string("avformat_write_header failed");
+  }
+}
+
+static void my_av_write_frame(MyAVFormatContext format_context, MyAVPacket packet) {
+  int ret = av_write_frame(format_context.get(), packet.get());
+  if (ret < 0) {
+    throw std::string("av_write_frame failed");
+  }
+}
+
+static void my_av_write_trailer(MyAVFormatContext format_context) {
+  int ret = av_write_trailer(format_context.get());
+  if (ret != 0) {
+    throw std::string("av_write_trailer failed");
   }
 }
 
@@ -425,9 +448,9 @@ export int main() {
 
     MyAVFormatContext output_format_context = my_avformat_alloc_output_context2("mp4");
 
-    AVIOContext* output_io_context = my_avio_open("file:output.mp4");
+    MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
 
-    output_format_context->pb = output_io_context;
+    output_format_context->pb = output_io_context.get();
 
     MyAVStream output_audio_stream = my_avformat_new_stream(output_format_context);
     MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
@@ -439,7 +462,7 @@ export int main() {
 
     av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
 
-    avformat_write_header(output_format_context.get(), nullptr);
+    my_avformat_write_header(output_format_context);
 
     while (my_av_read_frame(av_format_context, packet)) {
 
@@ -447,7 +470,8 @@ export int main() {
         if (packet != nullptr) {
           av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
           packet->pos = -1;
-          av_write_frame(output_format_context.get(), packet.get());
+          packet->stream_index = 1;
+          my_av_write_frame(output_format_context, packet);
         }
 
         my_avcodec_send_packet(video_codec_ctx, packet);
@@ -463,7 +487,8 @@ export int main() {
         if (packet != nullptr) {
           av_packet_rescale_ts(packet.get(), av_format_context->streams[audio_stream_index]->time_base, output_audio_stream->time_base);
           packet->pos = -1;
-          av_write_frame(output_format_context.get(), packet.get());
+          packet->stream_index = 0;
+          my_av_write_frame(output_format_context, packet);
         }
 
         my_avcodec_send_packet(audio_codec_ctx, packet);
@@ -511,10 +536,7 @@ export int main() {
       }
     }
 
-    av_write_trailer(output_format_context.get());
-
-    // TODO FIXME shared_ptr
-    avio_close(output_io_context);
+    my_av_write_trailer(output_format_context);
 
     // we would need to seek in the input file to the keyframe (which should be
     // fast) then we decode from there on until the place we need a keyframe of
