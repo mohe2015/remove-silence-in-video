@@ -628,18 +628,15 @@ export int main() {
               av_q2d(
                   av_format_context->streams[audio_stream_index]->time_base)) - 1;
 
-          std::cout << "dts: " << packet->dts << " pts: " << packet->pts
-                    << std::endl;
-
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
 
-          std::cout << "dts; " << packet->dts << " pts; " << packet->pts
-                    << std::endl;
+          //std::cout << "stream: " << 0 << " dts; " << packet->dts << " pts; " << packet->pts
+          //          << std::endl;
 
-          my_av_interleaved_write_frame(output_format_context, packet);
+          //my_av_interleaved_write_frame(output_format_context, packet);
         }
 
         // 187285365
@@ -660,21 +657,18 @@ export int main() {
               av_q2d(
                   av_format_context->streams[video_stream_index]->time_base)) - 1;
 
-          std::cout << "dts: " << packet->dts << " pts: " << packet->pts
-                    << std::endl;
-
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          std::cout << "dts; " << packet->dts << " pts; " << packet->pts
+          std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; " << packet->pts
                     << std::endl;
 
           // packets are out of order bruh
 
           // dts need to be in order
-          my_av_interleaved_write_frame(output_format_context, packet);
+          //my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
 
