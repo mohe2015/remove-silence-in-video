@@ -460,6 +460,12 @@ export int main() {
       }
 
       if (packet == nullptr || packet->stream_index == audio_stream_index) {
+        if (packet != nullptr) {
+          av_packet_rescale_ts(packet.get(), av_format_context->streams[audio_stream_index]->time_base, output_audio_stream->time_base);
+          packet->pos = -1;
+          av_write_frame(output_format_context.get(), packet.get());
+        }
+
         my_avcodec_send_packet(audio_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
