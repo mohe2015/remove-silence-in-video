@@ -9,6 +9,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 #include <libavutil/bprint.h>
+#include <libavformat/avio.h>
 }
 
 export module main;
@@ -22,6 +23,7 @@ import <optional>;
 import <sstream>;
 import <set>;
 import <map>;
+import <cmath>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -292,6 +294,22 @@ static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
   return MyAVStream(format_context, stream);
 }
 
+static AVIOContext* my_avio_open(std::string url) {
+  AVIOContext* io_context;
+  int ret = avio_open(&io_context, url.c_str(), AVIO_FLAG_WRITE);
+  if (ret < 0) {
+    throw std::string("avio_open failed");
+  }
+  return io_context;
+}
+
+static void my_avcodec_parameters_copy(AVCodecParameters* destination, const AVCodecParameters* source) {
+  int ret = avcodec_parameters_copy(destination, source);
+  if (ret < 0) {
+    throw std::string("avcodec_parameters_copy failed");
+  }
+}
+
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
                   MyAVCodecContext audio_codec_context,
@@ -407,12 +425,29 @@ export int main() {
 
     MyAVFormatContext output_format_context = my_avformat_alloc_output_context2("mp4");
 
-    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
+    AVIOContext* output_io_context = my_avio_open("file:output.mp4");
+
+    output_format_context->pb = output_io_context;
+
     MyAVStream output_audio_stream = my_avformat_new_stream(output_format_context);
+    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
+
+    my_avcodec_parameters_copy(output_audio_stream->codecpar, av_format_context->streams[audio_stream_index]->codecpar);
+    my_avcodec_parameters_copy(output_video_stream->codecpar, av_format_context->streams[video_stream_index]->codecpar);
+    output_audio_stream->codecpar->codec_tag = 0;
+    output_video_stream->codecpar->codec_tag = 0;
+
+    av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
+
+    avformat_write_header(output_format_context.get(), nullptr);
 
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
+        av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
+        packet->pos = -1;
+        av_write_frame(output_format_context.get(), packet.get());
+
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
@@ -467,6 +502,11 @@ export int main() {
         }
       }
     }
+
+    av_write_trailer(output_format_context.get());
+
+    // TODO FIXME shared_ptr
+    avio_close(output_io_context);
 
     // we would need to seek in the input file to the keyframe (which should be
     // fast) then we decode from there on until the place we need a keyframe of
