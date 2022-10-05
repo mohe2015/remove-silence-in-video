@@ -496,6 +496,8 @@ export int main() {
     while (my_av_read_frame(av_format_context, packet)) {
       if (packet != nullptr) {
         if (packet->stream_index == video_stream_index) {
+          // dts will be in order here (parsing order) which makes sense
+          // but the pts is not in order
           std::cout << "idx: " << packet->stream_index << " dts: " << packet->dts << " pts: " << packet->pts << std::endl;
         }
 
@@ -615,6 +617,8 @@ export int main() {
           std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;*/
 
           // packets are out of order bruh
+
+          // dts need to be in order
           my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
