@@ -12,6 +12,9 @@ compile-release:
 	clang++ -Weverything -Wno-c++98-compat -Wpedantic -g -ggdb -O3 -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.cpp -c -o main.o
 	clang++ -g -ggdb -O3 -stdlib=libc++ -std=c++20 -Wall -Wextra -fimplicit-modules -fimplicit-module-maps -fprebuilt-module-path=. main.o -lavformat -lavcodec -lavutil -lavfilter -o main # lib.o
 
+time: compile-release
+	time ./main > /dev/null 2>&1
+
 run-release: compile-release
 	./main
 

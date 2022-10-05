@@ -392,7 +392,7 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->next = nullptr;
 
   my_avfilter_graph_parse(
-      filter_graph, "silencedetect=noise=-30dB:duration=0.5", inputs, outputs);
+      filter_graph, "silencedetect=noise=-25dB:duration=0.25", inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
 
@@ -555,8 +555,8 @@ export int main() {
                   std::stod(std::string(silence_start->value));
               // int64_t silence_start =
               //     llroundl(silence_start_double / av_q2d(audio_time_base));
-              std::cout << "silence_start: " << silence_start_double
-                        << std::endl;
+              // std::cout << "silence_start: " << silence_start_double
+              //          << std::endl;
 
               last_silence_start = silence_start_double;
 
@@ -568,7 +568,8 @@ export int main() {
                   std::stod(std::string(silence_end->value));
               // int64_t silence_end =
               //     llroundl(silence_end_double / av_q2d(audio_time_base));
-              std::cout << "silence_end: " << silence_end_double << std::endl;
+              // std::cout << "silence_end: " << silence_end_double <<
+              // std::endl;
 
               silences.emplace_back(last_silence_start, silence_end_double);
 
@@ -596,8 +597,8 @@ export int main() {
     double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
-      std::cout << "handling silence: " << silence.first << " - "
-                << silence.second << std::endl;
+      // std::cout << "handling silence: " << silence.first << " - "
+      //           << silence.second << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
           frames.lower_bound(std::make_pair(rendered_until, 0)),
@@ -665,8 +666,8 @@ export int main() {
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; "
-                    << packet->pts << std::endl;
+          // std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; "
+          //           << packet->pts << std::endl;
 
           // packets are out of order bruh
 
