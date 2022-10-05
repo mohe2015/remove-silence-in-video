@@ -316,6 +316,24 @@ build_filter_tree(MyAVFormatContext format_context,
   return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
+export std::tuple<int, MyAVCodecContext>
+get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
+  MyAVCodecContext codec_context = nullptr;
+
+  MyAVCodec codec;
+  int stream_index;
+  std::tie(stream_index, codec) =
+      my_av_find_best_stream(format_context, media_type);
+
+  codec_context = my_avcodec_alloc_context3(codec);
+
+  my_avcodec_parameters_to_context(codec_context, format_context, stream_index);
+
+  my_avcodec_open2(codec_context, codec);
+
+  return std::make_tuple(stream_index, codec_context);
+}
+
 export int main() {
   try {
     std::string filename = "file:test.mp4";
@@ -328,33 +346,14 @@ export int main() {
     }*/
 
     MyAVCodecContext audio_codec_ctx = nullptr;
-    MyAVCodecContext video_codec_ctx = nullptr;
-
-    MyAVCodec audio_codec;
     int audio_stream_index;
-    std::tie(audio_stream_index, audio_codec) =
-        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO);
+    std::tie(audio_stream_index, audio_codec_ctx) =
+        get_decoder(av_format_context, AVMEDIA_TYPE_AUDIO);
 
-    MyAVCodec video_codec;
+    MyAVCodecContext video_codec_ctx = nullptr;
     int video_stream_index;
-    std::tie(video_stream_index, video_codec) =
-        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO);
-
-    std::cout << "audio stream: " << audio_stream_index
-              << " video stream: " << video_stream_index << std::endl;
-
-    audio_codec_ctx = my_avcodec_alloc_context3(audio_codec);
-    video_codec_ctx = my_avcodec_alloc_context3(video_codec);
-
-    my_avcodec_parameters_to_context(audio_codec_ctx, av_format_context,
-                                     audio_stream_index);
-
-    my_avcodec_parameters_to_context(video_codec_ctx, av_format_context,
-                                     video_stream_index);
-
-    my_avcodec_open2(audio_codec_ctx, audio_codec);
-
-    my_avcodec_open2(video_codec_ctx, video_codec);
+    std::tie(video_stream_index, video_codec_ctx) =
+        get_decoder(av_format_context, AVMEDIA_TYPE_VIDEO);
 
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
@@ -370,7 +369,8 @@ export int main() {
 
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
 
-    AVRational audio_time_base = av_format_context->streams[audio_stream_index]->time_base;
+    AVRational audio_time_base =
+        av_format_context->streams[audio_stream_index]->time_base;
 
     std::set<int64_t> keyframe_locations;
     std::map<int64_t, MyAVPacket> frames;
@@ -381,7 +381,8 @@ export int main() {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
-          //std::cout << "Keyframe detected " << video_frame->key_frame << " " << video_frame->pts << std::endl;
+          // std::cout << "Keyframe detected " << video_frame->key_frame << " "
+          // << video_frame->pts << std::endl;
           keyframe_locations.insert(video_frame->pts);
         }
       }
@@ -401,35 +402,45 @@ export int main() {
                 audio_filter_frame->metadata, "lavfi.silence_end", nullptr, 0);
 
             if (silence_start != nullptr) {
-              long double silence_start_double = std::stod(std::string(silence_start->value));
-              std::cout << "silence_start: " << llroundl(silence_start_double / av_q2d(audio_time_base))
+              long double silence_start_double =
+                  std::stod(std::string(silence_start->value));
+              std::cout << "silence_start: "
+                        << llroundl(silence_start_double /
+                                    av_q2d(audio_time_base))
                         << std::endl;
 
               // TODO copy file from last silence end until this silence start
             }
             if (silence_end != nullptr) {
               // this conversion is terrible
-              long double silence_end_double = std::stod(std::string(silence_end->value));
-              std::cout << "silence_end: " << llroundl(silence_end_double / av_q2d(audio_time_base)) << std::endl;
+              long double silence_end_double =
+                  std::stod(std::string(silence_end->value));
+              std::cout << "silence_end: "
+                        << llroundl(silence_end_double /
+                                    av_q2d(audio_time_base))
+                        << std::endl;
 
-              // render file from last keyframe to this silence end, then write keyframe.
-              // maybe the keyframe could be before the last silence_start?
+              // render file from last keyframe to this silence end, then write
+              // keyframe. maybe the keyframe could be before the last
+              // silence_start?
             }
 
-            // the problem is the silence start is sent later so we can't use this at all
-            // std::cout << "audio filtered until: " << audio_filter_frame->pts << std::endl;
+            // the problem is the silence start is sent later so we can't use
+            // this at all std::cout << "audio filtered until: " <<
+            // audio_filter_frame->pts << std::endl;
           }
         }
       }
     }
 
-    // we would need to seek in the input file to the keyframe (which should be fast)
-    // then we decode from there on until the place we need a keyframe of
+    // we would need to seek in the input file to the keyframe (which should be
+    // fast) then we decode from there on until the place we need a keyframe of
     // then we encode that keyframe
     // then we copy the rest of the input file
 
-    // maybe we simply cache the raw packets since the last keyframe and since the last audio filter response (for now maybe just cache everything?)
-    // for now just cache the whole file
+    // maybe we simply cache the raw packets since the last keyframe and since
+    // the last audio filter response (for now maybe just cache everything?) for
+    // now just cache the whole file
 
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
