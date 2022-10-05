@@ -1,5 +1,7 @@
 module;
 
+// https://www.youtube.com/results?search_query=audio+video+sync+test
+
 extern "C" {
 #include <cassert>
 #include <libavcodec/avcodec.h>
@@ -417,8 +419,8 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
 
 export int main() {
   try {
-    std::string filename = "file:test.mp4";
-    std::string output_filename = "file:output.mp4";
+    std::string filename = "file:h9j89L8eQQk.mp4";
+    std::string output_filename = "file:h9j89L8eQQk-output.mp4";
     std::string format = "mp4";
 
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
@@ -498,7 +500,7 @@ export int main() {
         if (packet->stream_index == video_stream_index) {
           // dts will be in order here (parsing order) which makes sense
           // but the pts is not in order
-          std::cout << "idx: " << packet->stream_index << " dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+          //std::cout << "idx: " << packet->stream_index << " dts: " << packet->dts << " pts: " << packet->pts << std::endl;
         }
 
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
@@ -590,34 +592,38 @@ export int main() {
 
       // copy from last until silence_start
       for (auto p : sorted) {
-        /*if (p->second->stream_index == audio_stream_index) {
-          MyAVPacket packet = my_av_packet_clone(p->second);
-          av_packet_rescale_ts(
+        if (p.second->stream_index == audio_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
+      
+          packet->pos = -1;
+          packet->stream_index = 0;
+          //packet->dts -= dts_difference;
+          //packet->pts -= pts_difference;
+/*
+    av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
-          packet->pos = -1;
-          packet->stream_index = 0;
-          packet->dts -= dts_difference;
-          packet->pts -= pts_difference;
+              */
+
           my_av_interleaved_write_frame(output_format_context, packet);
-        }*/
+        }
 
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
           packet->pos = -1;
           packet->stream_index = 1;
-          packet->dts -= dts_difference;
-          packet->pts -= pts_difference;
+          //packet->dts -= dts_difference;
+          //packet->pts -= pts_difference;
 
-          std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
-
-          /*av_packet_rescale_ts(
+          //std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+/*
+          av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
-
-          std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;*/
+*/
+         // std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;
 
           // packets are out of order bruh
 
