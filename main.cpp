@@ -391,7 +391,7 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-30dB:duration=2",
+  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-30dB:duration=0.5",
                           inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
@@ -419,8 +419,8 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
 
 export int main() {
   try {
-    std::string filename = "file:h9j89L8eQQk.mp4";
-    std::string output_filename = "file:h9j89L8eQQk-output.mp4";
+    std::string filename = "file:TjAa0wOe5k4.mp4";
+    std::string output_filename = "file:TjAa0wOe5k4-output.mp4";
     std::string format = "mp4";
 
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
