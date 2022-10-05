@@ -444,9 +444,11 @@ export int main() {
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
-        av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
-        packet->pos = -1;
-        av_write_frame(output_format_context.get(), packet.get());
+        if (packet != nullptr) {
+          av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
+          packet->pos = -1;
+          av_write_frame(output_format_context.get(), packet.get());
+        }
 
         my_avcodec_send_packet(video_codec_ctx, packet);
 
