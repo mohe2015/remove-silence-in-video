@@ -416,6 +416,9 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
 export int main() {
   try {
     std::string filename = "file:test.mp4";
+    std::string output_filename = "file:output.mp4";
+    std::string format = "mp4";
+
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
 
     my_avformat_find_stream_info(av_format_context);
@@ -452,14 +455,12 @@ export int main() {
     std::set<int64_t> keyframe_locations;
     std::map<int64_t, MyAVPacket> frames;
 
-    // https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html
-    // https://ffmpeg.org/doxygen/trunk/remuxing_8c-example.html#a48
     std::cout << av_format_context->iformat->name << std::endl;
 
     MyAVFormatContext output_format_context =
-        my_avformat_alloc_output_context2("mp4");
+        my_avformat_alloc_output_context2(format.c_str());
 
-    MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
+    MyAVIOContext output_io_context = my_avio_open(output_filename.c_str());
 
     if (output_format_context->oformat->flags & AVFMT_NOFILE) {
       throw new std::string("AVFMT_NOFILE");
@@ -481,7 +482,7 @@ export int main() {
         av_format_context->streams[video_stream_index]->codecpar);
     output_video_stream->codecpar->codec_tag = 0;
 
-    av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
+    av_dump_format(output_format_context.get(), 0, output_filename.c_str(), 1);
 
     my_avformat_write_header(output_format_context);
 
@@ -538,6 +539,8 @@ export int main() {
             // the problem is the silence start is sent later so we can't use
             // this at all std::cout << "audio filtered until: " <<
             // audio_filter_frame->pts << std::endl;
+
+            // TODO FIXME improve the filter impl that it tells you until where it analyzed and returns time as integer
           }
         }
       }
@@ -574,22 +577,6 @@ export int main() {
     // maybe we simply cache the raw packets since the last keyframe and since
     // the last audio filter response (for now maybe just cache everything?) for
     // now just cache the whole file
-
-    // then streamcopy (or decode for partial keyframe shit)
-    // https://ffmpeg.org/ffmpeg-codecs.html
-
-    // https://ffmpeg.org/ffmpeg-filters.html#segment_002c-asegment
-
-    // https://ffmpeg.org/ffmpeg-filters.html
-    // atrim
-
-    // https://ffmpeg.org/ffmpeg-filters.html#Timeline-editing
-
-    // then encode
-
-    // https://ffmpeg.org/ffmpeg-filters.html#toc-concat
-
-    // and mux
 
     return 0;
   } catch (std::string error) {
