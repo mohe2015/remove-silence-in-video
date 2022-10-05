@@ -572,6 +572,8 @@ export int main() {
     }
 
     int64_t rendered_until = 0;
+    int64_t dts_difference = 0;
+    int64_t pts_difference = 0;
     for (auto silence : silences) {
       std::cout << "handling silence: " << silence.first << " - "
                 << silence.second << std::endl;
@@ -579,7 +581,7 @@ export int main() {
       // copy from last until silence_start
       for (auto p = frames.lower_bound(std::make_pair(rendered_until, 0));
            p != frames.upper_bound(std::make_pair(silence.first, 2)); ++p) {
-        if (p->second->stream_index == audio_stream_index) {
+        /*if (p->second->stream_index == audio_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p->second);
           av_packet_rescale_ts(
               packet.get(),
@@ -587,17 +589,27 @@ export int main() {
               output_audio_stream->time_base);
           packet->pos = -1;
           packet->stream_index = 0;
+          packet->dts -= dts_difference;
+          packet->pts -= pts_difference;
           my_av_write_frame(output_format_context, packet);
-        }
+        }*/
 
         if (p->second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p->second);
-          av_packet_rescale_ts(
+          packet->pos = -1;
+          packet->stream_index = 1;
+          packet->dts -= dts_difference;
+          packet->pts -= pts_difference;
+
+          std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+
+          /*av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
-          packet->pos = -1;
-          packet->stream_index = 1;
+
+          std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;*/
+
           my_av_write_frame(output_format_context, packet);
         }
       }
@@ -605,6 +617,8 @@ export int main() {
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
       rendered_until = silence.second;
+      pts_difference += silence.second - silence.first; // hacky
+      dts_difference += silence.second - silence.first; // hacky
     }
 
     my_av_write_trailer(output_format_context);
