@@ -7,9 +7,9 @@ extern "C" {
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
 #include <libavutil/avutil.h>
 #include <libavutil/bprint.h>
-#include <libavformat/avio.h>
 }
 
 export module main;
@@ -271,16 +271,18 @@ static void my_av_buffersrc_add_frame(MyAVFilterContext filter_context,
 }
 
 static MyAVFormatContext my_avformat_alloc_context() {
-  AVFormatContext* format_context = avformat_alloc_context();
+  AVFormatContext *format_context = avformat_alloc_context();
   if (format_context == nullptr) {
     throw std::string("avformat_alloc_context failed");
   }
   return MyAVFormatContext(format_context, &avformat_free_context);
 }
 
-static MyAVFormatContext my_avformat_alloc_output_context2(std::string format_name) {
+static MyAVFormatContext
+my_avformat_alloc_output_context2(std::string format_name) {
   AVFormatContext *format_context;
-  int ret = avformat_alloc_output_context2(&format_context, nullptr, format_name.c_str(), nullptr);
+  int ret = avformat_alloc_output_context2(&format_context, nullptr,
+                                           format_name.c_str(), nullptr);
   if (ret < 0) {
     throw std::string("avformat_alloc_output_context2 failed");
   }
@@ -288,7 +290,7 @@ static MyAVFormatContext my_avformat_alloc_output_context2(std::string format_na
 }
 
 static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
-  AVStream* stream = avformat_new_stream(format_context.get(), nullptr);
+  AVStream *stream = avformat_new_stream(format_context.get(), nullptr);
   if (stream == nullptr) {
     throw std::string("avformat_new_stream failed");
   }
@@ -297,7 +299,7 @@ static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
 
 static MyAVIOContext my_avio_open(std::string url) {
   // TODO FIXME lifetime shorter than MyAVFormatContext
-  AVIOContext* io_context;
+  AVIOContext *io_context;
   int ret = avio_open(&io_context, url.c_str(), AVIO_FLAG_WRITE);
   if (ret < 0) {
     throw std::string("avio_open failed");
@@ -305,7 +307,8 @@ static MyAVIOContext my_avio_open(std::string url) {
   return MyAVIOContext(io_context, avio_close);
 }
 
-static void my_avcodec_parameters_copy(AVCodecParameters* destination, const AVCodecParameters* source) {
+static void my_avcodec_parameters_copy(AVCodecParameters *destination,
+                                       const AVCodecParameters *source) {
   int ret = avcodec_parameters_copy(destination, source);
   if (ret < 0) {
     throw std::string("avcodec_parameters_copy failed");
@@ -319,7 +322,8 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
   }
 }
 
-static void my_av_write_frame(MyAVFormatContext format_context, MyAVPacket packet) {
+static void my_av_write_frame(MyAVFormatContext format_context,
+                              MyAVPacket packet) {
   int ret = av_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
     throw std::string("av_write_frame failed");
@@ -444,7 +448,8 @@ export int main() {
     // https://ffmpeg.org/doxygen/trunk/remuxing_8c-example.html#a48
     std::cout << av_format_context->iformat->name << std::endl;
 
-    MyAVFormatContext output_format_context = my_avformat_alloc_output_context2("mp4");
+    MyAVFormatContext output_format_context =
+        my_avformat_alloc_output_context2("mp4");
 
     MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
 
@@ -454,12 +459,18 @@ export int main() {
 
     output_format_context->pb = output_io_context.get();
 
-    MyAVStream output_audio_stream = my_avformat_new_stream(output_format_context);
-    my_avcodec_parameters_copy(output_audio_stream->codecpar, av_format_context->streams[audio_stream_index]->codecpar);
+    MyAVStream output_audio_stream =
+        my_avformat_new_stream(output_format_context);
+    my_avcodec_parameters_copy(
+        output_audio_stream->codecpar,
+        av_format_context->streams[audio_stream_index]->codecpar);
     output_audio_stream->codecpar->codec_tag = 0;
 
-    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
-    my_avcodec_parameters_copy(output_video_stream->codecpar, av_format_context->streams[video_stream_index]->codecpar);
+    MyAVStream output_video_stream =
+        my_avformat_new_stream(output_format_context);
+    my_avcodec_parameters_copy(
+        output_video_stream->codecpar,
+        av_format_context->streams[video_stream_index]->codecpar);
     output_video_stream->codecpar->codec_tag = 0;
 
     av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
@@ -524,18 +535,23 @@ export int main() {
       }
 
       if (packet != nullptr && packet->stream_index == audio_stream_index) {
-        av_packet_rescale_ts(packet.get(), av_format_context->streams[audio_stream_index]->time_base, output_audio_stream->time_base);
+        av_packet_rescale_ts(
+            packet.get(),
+            av_format_context->streams[audio_stream_index]->time_base,
+            output_audio_stream->time_base);
         packet->pos = -1;
         packet->stream_index = 0;
         my_av_write_frame(output_format_context, packet);
       }
-
-      if (packet != nullptr && packet->stream_index == video_stream_index) {
-          av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
-          packet->pos = -1;
-          packet->stream_index = 1;
-          my_av_write_frame(output_format_context, packet);
-        }
+      /*
+            if (packet != nullptr && packet->stream_index == video_stream_index)
+         { av_packet_rescale_ts( packet.get(),
+                  av_format_context->streams[video_stream_index]->time_base,
+                  output_video_stream->time_base);
+              packet->pos = -1;
+              packet->stream_index = 1;
+              my_av_write_frame(output_format_context, packet);
+            }*/
     }
 
     my_av_write_trailer(output_format_context);
