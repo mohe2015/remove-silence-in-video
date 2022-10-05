@@ -391,7 +391,7 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-40dB:duration=1",
+  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-30dB:duration=2",
                           inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
@@ -599,12 +599,12 @@ export int main() {
           packet->stream_index = 0;
           //packet->dts -= dts_difference;
           //packet->pts -= pts_difference;
-/*
+
     av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
-              */
+              
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -617,12 +617,12 @@ export int main() {
           //packet->pts -= pts_difference;
 
           //std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
-/*
+
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
-*/
+
          // std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;
 
           // packets are out of order bruh
