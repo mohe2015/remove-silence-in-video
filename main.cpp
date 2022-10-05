@@ -324,9 +324,9 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
   }
 }
 
-static void my_av_write_frame(MyAVFormatContext format_context,
+static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
                               MyAVPacket packet) {
-  int ret = av_write_frame(format_context.get(), packet.get());
+  int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
     throw std::string("av_write_frame failed");
   }
@@ -595,7 +595,7 @@ export int main() {
           packet->stream_index = 0;
           packet->dts -= dts_difference;
           packet->pts -= pts_difference;
-          my_av_write_frame(output_format_context, packet);
+          my_av_interleaved_write_frame(output_format_context, packet);
         }*/
 
         if (p->second->stream_index == video_stream_index) {
@@ -614,7 +614,8 @@ export int main() {
 
           std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;*/
 
-          my_av_write_frame(output_format_context, packet);
+          // packets are out of order bruh
+          my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
 
