@@ -327,7 +327,7 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
 }
 
 static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
-                              MyAVPacket packet) {
+                                          MyAVPacket packet) {
   int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
     throw std::string("av_write_frame failed");
@@ -391,8 +391,8 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-30dB:duration=0.5",
-                          inputs, outputs);
+  my_avfilter_graph_parse(
+      filter_graph, "silencedetect=noise=-30dB:duration=0.5", inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
 
@@ -458,6 +458,13 @@ export int main() {
     AVRational audio_time_base =
         av_format_context->streams[audio_stream_index]->time_base;
 
+    AVRational video_time_base =
+        av_format_context->streams[video_stream_index]->time_base;
+
+    // these are really different
+    std::cout << audio_time_base.num << "/" << audio_time_base.den << std::endl;
+    std::cout << video_time_base.num << "/" << video_time_base.den << std::endl;
+
     std::cout << av_format_context->iformat->name << std::endl;
 
     MyAVFormatContext output_format_context =
@@ -490,23 +497,30 @@ export int main() {
     my_avformat_write_header(output_format_context);
 
     std::set<int64_t> keyframe_locations;
-    std::map<std::pair<int64_t, int64_t>, MyAVPacket> frames;
-    std::vector<std::pair<int64_t, int64_t>> silences;
+    std::map<std::pair<double, int64_t>, MyAVPacket> frames;
+    std::vector<std::pair<double, double>> silences;
 
-    int64_t last_silence_start = 0;
+    double last_silence_start = 0;
 
     while (my_av_read_frame(av_format_context, packet)) {
       if (packet != nullptr) {
         if (packet->stream_index == video_stream_index) {
           // dts will be in order here (parsing order) which makes sense
           // but the pts is not in order
-          //std::cout << "idx: " << packet->stream_index << " dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+          // std::cout << "idx: " << packet->stream_index << " dts: " <<
+          // packet->dts << " pts: " << packet->pts << std::endl;
         }
 
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
         if (!frames
-                 .emplace(std::make_pair(cloned_packet->pts,
-                                         cloned_packet->stream_index),
+                 // TODO FIXME make this more accurate by calculating inside the
+                 // rational first
+                 .emplace(std::make_pair(
+                              cloned_packet->pts *
+                                  av_q2d(av_format_context
+                                             ->streams[packet->stream_index]
+                                             ->time_base),
+                              cloned_packet->stream_index),
                           cloned_packet)
                  .second) {
           throw std::string("duplicate");
@@ -539,12 +553,12 @@ export int main() {
             if (silence_start != nullptr) {
               long double silence_start_double =
                   std::stod(std::string(silence_start->value));
-              int64_t silence_start =
-                  llroundl(silence_start_double / av_q2d(audio_time_base));
-              std::cout << "silence_start: " << silence_start << " detected at "
-                        << audio_filter_frame->pts << std::endl;
+              // int64_t silence_start =
+              //     llroundl(silence_start_double / av_q2d(audio_time_base));
+              std::cout << "silence_start: " << silence_start_double
+                        << std::endl;
 
-              last_silence_start = silence_start;
+              last_silence_start = silence_start_double;
 
               // TODO copy file from last silence end until this silence start
             }
@@ -552,12 +566,11 @@ export int main() {
               // this conversion is terrible
               long double silence_end_double =
                   std::stod(std::string(silence_end->value));
-              int64_t silence_end =
-                  llroundl(silence_end_double / av_q2d(audio_time_base));
-              std::cout << "silence_end: " << silence_end << " detected at "
-                        << audio_filter_frame->pts << std::endl;
+              // int64_t silence_end =
+              //     llroundl(silence_end_double / av_q2d(audio_time_base));
+              std::cout << "silence_end: " << silence_end_double << std::endl;
 
-              silences.emplace_back(last_silence_start, silence_end);
+              silences.emplace_back(last_silence_start, silence_end_double);
 
               // we probably can't immediately start rendering here because we
               // currently have rounding bugs
@@ -579,32 +592,49 @@ export int main() {
       }
     }
 
-    int64_t rendered_until = 0;
-    int64_t dts_difference = 0;
-    int64_t pts_difference = 0;
+    double rendered_until = 0;
+    double dts_difference = 0;
+    double pts_difference = 0;
     for (auto silence : silences) {
       std::cout << "handling silence: " << silence.first << " - "
                 << silence.second << std::endl;
 
-      std::vector<std::pair<std::pair<int64_t, int64_t>, MyAVPacket>> sorted(frames.lower_bound(std::make_pair(rendered_until, 0)), frames.upper_bound(std::make_pair(silence.first, 2/*TODO FIXME this is wrong*/)));
-      std::sort(sorted.begin(), sorted.end(), 
-          [](std::pair<std::pair<int64_t, int64_t>, MyAVPacket> a, std::pair<std::pair<int64_t, int64_t>, MyAVPacket> b) { return b.second->dts > a.second->dts; });
+      std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
+          frames.lower_bound(std::make_pair(rendered_until, 0)),
+          frames.upper_bound(
+              std::make_pair(silence.first, 2 /*TODO FIXME this is wrong*/)));
+      std::sort(sorted.begin(), sorted.end(),
+                [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
+                   std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
+                  return b.second->dts > a.second->dts;
+                });
 
       // copy from last until silence_start
       for (auto p : sorted) {
         if (p.second->stream_index == audio_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
-      
+
           packet->pos = -1;
           packet->stream_index = 0;
-          //packet->dts -= dts_difference;
-          //packet->pts -= pts_difference;
 
-    av_packet_rescale_ts(
+          // TODO FIXME I'm pretty sure we need to do this in the original time
+          // units
+          packet->dts -= llroundl(
+              dts_difference /
+              av_q2d(
+                  av_format_context->streams[audio_stream_index]->time_base));
+          packet->pts -= llroundl(
+              pts_difference /
+              av_q2d(
+                  av_format_context->streams[audio_stream_index]->time_base));
+
+          std::cout << "dts: " << packet->dts << " pts: " << packet->pts
+                    << std::endl;
+
+          av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
-              
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -613,17 +643,28 @@ export int main() {
           MyAVPacket packet = my_av_packet_clone(p.second);
           packet->pos = -1;
           packet->stream_index = 1;
-          //packet->dts -= dts_difference;
-          //packet->pts -= pts_difference;
 
-          //std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+          // TODO FIXME I'm pretty sure we need to do this in the original time
+          // units
+          packet->dts -= llroundl(
+              dts_difference /
+              av_q2d(
+                  av_format_context->streams[video_stream_index]->time_base));
+          packet->pts -= llroundl(
+              pts_difference /
+              av_q2d(
+                  av_format_context->streams[video_stream_index]->time_base));
+
+          std::cout << "dts: " << packet->dts << " pts: " << packet->pts
+                    << std::endl;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-         // std::cout << "dts; " << packet->dts << " pts; " << packet->pts << std::endl;
+          // std::cout << "dts; " << packet->dts << " pts; " << packet->pts <<
+          // std::endl;
 
           // packets are out of order bruh
 
