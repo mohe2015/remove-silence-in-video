@@ -495,6 +495,10 @@ export int main() {
 
     while (my_av_read_frame(av_format_context, packet)) {
       if (packet != nullptr) {
+        if (packet->stream_index == video_stream_index) {
+          std::cout << "idx: " << packet->stream_index << " dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+        }
+
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
         if (!frames
                  .emplace(std::make_pair(cloned_packet->pts,
@@ -580,7 +584,7 @@ export int main() {
 
       // copy from last until silence_start
       for (auto p = frames.lower_bound(std::make_pair(rendered_until, 0));
-           p != frames.upper_bound(std::make_pair(silence.first, 2)); ++p) {
+           p != frames.upper_bound(std::make_pair(silence.first, 2/*TODO FIXME this is wrong*/)); ++p) {
         /*if (p->second->stream_index == audio_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p->second);
           av_packet_rescale_ts(
