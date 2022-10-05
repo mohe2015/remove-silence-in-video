@@ -337,6 +337,14 @@ static void my_av_write_trailer(MyAVFormatContext format_context) {
   }
 }
 
+static MyAVPacket my_av_packet_clone(MyAVPacket packet) {
+  AVPacket *cloned_packet = av_packet_clone(packet.get());
+  if (cloned_packet == nullptr) {
+    throw std::string("av_packet_alloc failed");
+  }
+  return MyAVPacket(cloned_packet, &my_av_packet_free);
+}
+
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
                   MyAVCodecContext audio_codec_context,
@@ -387,7 +395,7 @@ build_filter_tree(MyAVFormatContext format_context,
   return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
-export std::tuple<int, MyAVCodecContext>
+static std::tuple<int, MyAVCodecContext>
 get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
   MyAVCodecContext codec_context = nullptr;
 
@@ -534,6 +542,17 @@ export int main() {
         }
       }
 
+      if (packet != nullptr && packet->stream_index == video_stream_index) {
+        MyAVPacket cloned_packet = my_av_packet_clone(packet);
+        av_packet_rescale_ts(
+            cloned_packet.get(),
+            av_format_context->streams[video_stream_index]->time_base,
+            output_video_stream->time_base);
+        cloned_packet->pos = -1;
+        cloned_packet->stream_index = 1;
+        my_av_write_frame(output_format_context, cloned_packet);
+      }
+
       if (packet != nullptr && packet->stream_index == audio_stream_index) {
         av_packet_rescale_ts(
             packet.get(),
@@ -543,15 +562,6 @@ export int main() {
         packet->stream_index = 0;
         my_av_write_frame(output_format_context, packet);
       }
-      /*
-            if (packet != nullptr && packet->stream_index == video_stream_index)
-         { av_packet_rescale_ts( packet.get(),
-                  av_format_context->streams[video_stream_index]->time_base,
-                  output_video_stream->time_base);
-              packet->pos = -1;
-              packet->stream_index = 1;
-              my_av_write_frame(output_format_context, packet);
-            }*/
     }
 
     my_av_write_trailer(output_format_context);
