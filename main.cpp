@@ -7,19 +7,23 @@ extern "C" {
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
 #include <libavutil/avutil.h>
 #include <libavutil/bprint.h>
 }
 
 export module main;
-export import <string>;
-export import <memory>;
-export import <iostream>;
-export import <limits>;
-export import <tuple>;
-export import <memory>;
+import <string>;
+import <memory>;
+import <iostream>;
+import <limits>;
+import <tuple>;
+import <memory>;
 import <optional>;
 import <sstream>;
+import <set>;
+import <map>;
+import <cmath>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -51,6 +55,8 @@ export using MyAVFrame = std::shared_ptr<AVFrame>;
 export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
 export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
 export using MyAVFilterContext = std::shared_ptr<AVFilterContext>;
+export using MyAVStream = std::shared_ptr<AVStream>;
+export using MyAVIOContext = std::shared_ptr<AVIOContext>;
 
 static MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context = nullptr;
@@ -264,6 +270,81 @@ static void my_av_buffersrc_add_frame(MyAVFilterContext filter_context,
   }
 }
 
+static MyAVFormatContext my_avformat_alloc_context() {
+  AVFormatContext *format_context = avformat_alloc_context();
+  if (format_context == nullptr) {
+    throw std::string("avformat_alloc_context failed");
+  }
+  return MyAVFormatContext(format_context, &avformat_free_context);
+}
+
+static MyAVFormatContext
+my_avformat_alloc_output_context2(std::string format_name) {
+  AVFormatContext *format_context;
+  int ret = avformat_alloc_output_context2(&format_context, nullptr,
+                                           format_name.c_str(), nullptr);
+  if (ret < 0) {
+    throw std::string("avformat_alloc_output_context2 failed");
+  }
+  return MyAVFormatContext(format_context, &avformat_free_context);
+}
+
+static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
+  AVStream *stream = avformat_new_stream(format_context.get(), nullptr);
+  if (stream == nullptr) {
+    throw std::string("avformat_new_stream failed");
+  }
+  return MyAVStream(format_context, stream);
+}
+
+static MyAVIOContext my_avio_open(std::string url) {
+  // TODO FIXME lifetime shorter than MyAVFormatContext
+  AVIOContext *io_context;
+  int ret = avio_open(&io_context, url.c_str(), AVIO_FLAG_WRITE);
+  if (ret < 0) {
+    throw std::string("avio_open failed");
+  }
+  return MyAVIOContext(io_context, avio_close);
+}
+
+static void my_avcodec_parameters_copy(AVCodecParameters *destination,
+                                       const AVCodecParameters *source) {
+  int ret = avcodec_parameters_copy(destination, source);
+  if (ret < 0) {
+    throw std::string("avcodec_parameters_copy failed");
+  }
+}
+
+static void my_avformat_write_header(MyAVFormatContext format_context) {
+  int ret = avformat_write_header(format_context.get(), nullptr);
+  if (ret < 0) {
+    throw std::string("avformat_write_header failed");
+  }
+}
+
+static void my_av_write_frame(MyAVFormatContext format_context,
+                              MyAVPacket packet) {
+  int ret = av_write_frame(format_context.get(), packet.get());
+  if (ret < 0) {
+    throw std::string("av_write_frame failed");
+  }
+}
+
+static void my_av_write_trailer(MyAVFormatContext format_context) {
+  int ret = av_write_trailer(format_context.get());
+  if (ret != 0) {
+    throw std::string("av_write_trailer failed");
+  }
+}
+
+static MyAVPacket my_av_packet_clone(MyAVPacket packet) {
+  AVPacket *cloned_packet = av_packet_clone(packet.get());
+  if (cloned_packet == nullptr) {
+    throw std::string("av_packet_alloc failed");
+  }
+  return MyAVPacket(cloned_packet, &my_av_packet_free);
+}
+
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
                   MyAVCodecContext audio_codec_context,
@@ -314,6 +395,24 @@ build_filter_tree(MyAVFormatContext format_context,
   return std::make_tuple(abuffersrc_ctx, abuffersink_ctx);
 }
 
+static std::tuple<int, MyAVCodecContext>
+get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
+  MyAVCodecContext codec_context = nullptr;
+
+  MyAVCodec codec;
+  int stream_index;
+  std::tie(stream_index, codec) =
+      my_av_find_best_stream(format_context, media_type);
+
+  codec_context = my_avcodec_alloc_context3(codec);
+
+  my_avcodec_parameters_to_context(codec_context, format_context, stream_index);
+
+  my_avcodec_open2(codec_context, codec);
+
+  return std::make_tuple(stream_index, codec_context);
+}
+
 export int main() {
   try {
     std::string filename = "file:test.mp4";
@@ -321,38 +420,17 @@ export int main() {
 
     my_avformat_find_stream_info(av_format_context);
 
-    /*for (unsigned int i = 0; i < av_format_context->nb_streams; i++) {
-      av_dump_format(av_format_context.get(), i, filename.c_str(), 0);
-    }*/
+    av_dump_format(av_format_context.get(), 0, filename.c_str(), 0);
 
     MyAVCodecContext audio_codec_ctx = nullptr;
-    MyAVCodecContext video_codec_ctx = nullptr;
-
-    MyAVCodec audio_codec;
     int audio_stream_index;
-    std::tie(audio_stream_index, audio_codec) =
-        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_AUDIO);
+    std::tie(audio_stream_index, audio_codec_ctx) =
+        get_decoder(av_format_context, AVMEDIA_TYPE_AUDIO);
 
-    MyAVCodec video_codec;
+    MyAVCodecContext video_codec_ctx = nullptr;
     int video_stream_index;
-    std::tie(video_stream_index, video_codec) =
-        my_av_find_best_stream(av_format_context, AVMEDIA_TYPE_VIDEO);
-
-    std::cout << "audio stream: " << audio_stream_index
-              << " video stream: " << video_stream_index << std::endl;
-
-    audio_codec_ctx = my_avcodec_alloc_context3(audio_codec);
-    video_codec_ctx = my_avcodec_alloc_context3(video_codec);
-
-    my_avcodec_parameters_to_context(audio_codec_ctx, av_format_context,
-                                     audio_stream_index);
-
-    my_avcodec_parameters_to_context(video_codec_ctx, av_format_context,
-                                     video_stream_index);
-
-    my_avcodec_open2(audio_codec_ctx, audio_codec);
-
-    my_avcodec_open2(video_codec_ctx, video_codec);
+    std::tie(video_stream_index, video_codec_ctx) =
+        get_decoder(av_format_context, AVMEDIA_TYPE_VIDEO);
 
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
@@ -368,14 +446,54 @@ export int main() {
 
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONINTRA;
 
+    AVRational audio_time_base =
+        av_format_context->streams[audio_stream_index]->time_base;
+
+    std::set<int64_t> keyframe_locations;
+    std::map<int64_t, MyAVPacket> frames;
+
+    // https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html
+    // https://ffmpeg.org/doxygen/trunk/remuxing_8c-example.html#a48
+    std::cout << av_format_context->iformat->name << std::endl;
+
+    MyAVFormatContext output_format_context =
+        my_avformat_alloc_output_context2("mp4");
+
+    MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
+
+    if (output_format_context->oformat->flags & AVFMT_NOFILE) {
+      throw new std::string("AVFMT_NOFILE");
+    }
+
+    output_format_context->pb = output_io_context.get();
+
+    MyAVStream output_audio_stream =
+        my_avformat_new_stream(output_format_context);
+    my_avcodec_parameters_copy(
+        output_audio_stream->codecpar,
+        av_format_context->streams[audio_stream_index]->codecpar);
+    output_audio_stream->codecpar->codec_tag = 0;
+
+    MyAVStream output_video_stream =
+        my_avformat_new_stream(output_format_context);
+    my_avcodec_parameters_copy(
+        output_video_stream->codecpar,
+        av_format_context->streams[video_stream_index]->codecpar);
+    output_video_stream->codecpar->codec_tag = 0;
+
+    av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
+
+    my_avformat_write_header(output_format_context);
+
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
-          std::cout << "Keyframe detected " << video_frame->key_frame << " "
-                    << video_frame->pts << std::endl;
+          // std::cout << "Keyframe detected " << video_frame->key_frame << " "
+          // << video_frame->pts << std::endl;
+          keyframe_locations.insert(video_frame->pts);
         }
       }
 
@@ -394,16 +512,68 @@ export int main() {
                 audio_filter_frame->metadata, "lavfi.silence_end", nullptr, 0);
 
             if (silence_start != nullptr) {
-              std::cout << "silence_start: " << silence_start->value
+              long double silence_start_double =
+                  std::stod(std::string(silence_start->value));
+              std::cout << "silence_start: "
+                        << llroundl(silence_start_double /
+                                    av_q2d(audio_time_base))
                         << std::endl;
+
+              // TODO copy file from last silence end until this silence start
             }
             if (silence_end != nullptr) {
-              std::cout << "silence_end: " << silence_end->value << std::endl;
+              // this conversion is terrible
+              long double silence_end_double =
+                  std::stod(std::string(silence_end->value));
+              std::cout << "silence_end: "
+                        << llroundl(silence_end_double /
+                                    av_q2d(audio_time_base))
+                        << std::endl;
+
+              // render file from last keyframe to this silence end, then write
+              // keyframe. maybe the keyframe could be before the last
+              // silence_start?
             }
+
+            // the problem is the silence start is sent later so we can't use
+            // this at all std::cout << "audio filtered until: " <<
+            // audio_filter_frame->pts << std::endl;
           }
         }
       }
+
+      if (packet != nullptr && packet->stream_index == video_stream_index) {
+        MyAVPacket cloned_packet = my_av_packet_clone(packet);
+        av_packet_rescale_ts(
+            cloned_packet.get(),
+            av_format_context->streams[video_stream_index]->time_base,
+            output_video_stream->time_base);
+        cloned_packet->pos = -1;
+        cloned_packet->stream_index = 1;
+        my_av_write_frame(output_format_context, cloned_packet);
+      }
+
+      if (packet != nullptr && packet->stream_index == audio_stream_index) {
+        av_packet_rescale_ts(
+            packet.get(),
+            av_format_context->streams[audio_stream_index]->time_base,
+            output_audio_stream->time_base);
+        packet->pos = -1;
+        packet->stream_index = 0;
+        my_av_write_frame(output_format_context, packet);
+      }
     }
+
+    my_av_write_trailer(output_format_context);
+
+    // we would need to seek in the input file to the keyframe (which should be
+    // fast) then we decode from there on until the place we need a keyframe of
+    // then we encode that keyframe
+    // then we copy the rest of the input file
+
+    // maybe we simply cache the raw packets since the last keyframe and since
+    // the last audio filter response (for now maybe just cache everything?) for
+    // now just cache the whole file
 
     // then streamcopy (or decode for partial keyframe shit)
     // https://ffmpeg.org/ffmpeg-codecs.html
