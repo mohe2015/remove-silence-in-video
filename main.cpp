@@ -408,9 +408,7 @@ export int main() {
 
     my_avformat_find_stream_info(av_format_context);
 
-    /*for (unsigned int i = 0; i < av_format_context->nb_streams; i++) {
-      av_dump_format(av_format_context.get(), i, filename.c_str(), 0);
-    }*/
+    av_dump_format(av_format_context.get(), 0, filename.c_str(), 0);
 
     MyAVCodecContext audio_codec_ctx = nullptr;
     int audio_stream_index;
@@ -450,14 +448,18 @@ export int main() {
 
     MyAVIOContext output_io_context = my_avio_open("file:output.mp4");
 
+    if (output_format_context->oformat->flags & AVFMT_NOFILE) {
+      throw new std::string("AVFMT_NOFILE");
+    }
+
     output_format_context->pb = output_io_context.get();
 
     MyAVStream output_audio_stream = my_avformat_new_stream(output_format_context);
-    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
-
     my_avcodec_parameters_copy(output_audio_stream->codecpar, av_format_context->streams[audio_stream_index]->codecpar);
-    my_avcodec_parameters_copy(output_video_stream->codecpar, av_format_context->streams[video_stream_index]->codecpar);
     output_audio_stream->codecpar->codec_tag = 0;
+
+    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
+    my_avcodec_parameters_copy(output_video_stream->codecpar, av_format_context->streams[video_stream_index]->codecpar);
     output_video_stream->codecpar->codec_tag = 0;
 
     av_dump_format(output_format_context.get(), 0, "output.mp4", 1);
@@ -467,13 +469,6 @@ export int main() {
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
-        if (packet != nullptr) {
-          av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
-          packet->pos = -1;
-          packet->stream_index = 1;
-          my_av_write_frame(output_format_context, packet);
-        }
-
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
@@ -484,13 +479,6 @@ export int main() {
       }
 
       if (packet == nullptr || packet->stream_index == audio_stream_index) {
-        if (packet != nullptr) {
-          av_packet_rescale_ts(packet.get(), av_format_context->streams[audio_stream_index]->time_base, output_audio_stream->time_base);
-          packet->pos = -1;
-          packet->stream_index = 0;
-          my_av_write_frame(output_format_context, packet);
-        }
-
         my_avcodec_send_packet(audio_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
@@ -534,6 +522,20 @@ export int main() {
           }
         }
       }
+
+      if (packet != nullptr && packet->stream_index == audio_stream_index) {
+        av_packet_rescale_ts(packet.get(), av_format_context->streams[audio_stream_index]->time_base, output_audio_stream->time_base);
+        packet->pos = -1;
+        packet->stream_index = 0;
+        my_av_write_frame(output_format_context, packet);
+      }
+
+      if (packet != nullptr && packet->stream_index == video_stream_index) {
+          av_packet_rescale_ts(packet.get(), av_format_context->streams[video_stream_index]->time_base, output_video_stream->time_base);
+          packet->pos = -1;
+          packet->stream_index = 1;
+          my_av_write_frame(output_format_context, packet);
+        }
     }
 
     my_av_write_trailer(output_format_context);
