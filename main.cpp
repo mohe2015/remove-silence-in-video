@@ -24,6 +24,7 @@ import <sstream>;
 import <set>;
 import <map>;
 import <cmath>;
+import <vector>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -435,6 +436,9 @@ export int main() {
     std::tie(video_stream_index, video_codec_ctx) =
         get_decoder(av_format_context, AVMEDIA_TYPE_VIDEO);
 
+    std::cout << "video stream index: " << video_stream_index
+              << " audio stream index: " << audio_stream_index << std::endl;
+
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
@@ -442,7 +446,6 @@ export int main() {
 
     MyAVFrame audio_filter_frame = my_av_frame_alloc();
 
-    // AVPacketList
     MyAVPacket packet = my_av_packet_alloc();
     MyAVFrame audio_frame = my_av_frame_alloc();
     MyAVFrame video_frame = my_av_frame_alloc();
@@ -451,9 +454,6 @@ export int main() {
 
     AVRational audio_time_base =
         av_format_context->streams[audio_stream_index]->time_base;
-
-    std::set<int64_t> keyframe_locations;
-    std::map<int64_t, MyAVPacket> frames;
 
     std::cout << av_format_context->iformat->name << std::endl;
 
@@ -486,6 +486,12 @@ export int main() {
 
     my_avformat_write_header(output_format_context);
 
+    std::set<int64_t> keyframe_locations;
+    std::map<int64_t, MyAVPacket> frames;
+    std::vector<std::pair<int64_t, int64_t>> silences;
+
+    int64_t last_silence_start = 0;
+
     while (my_av_read_frame(av_format_context, packet)) {
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
@@ -505,7 +511,6 @@ export int main() {
           my_av_buffersrc_add_frame(abuffersrc_ctx, audio_frame);
 
           while (av_buffersink_get_frame(abuffersink_ctx, audio_filter_frame)) {
-
             AVDictionaryEntry *silence_start =
                 av_dict_get(audio_filter_frame->metadata, "lavfi.silence_start",
                             nullptr, 0);
@@ -515,10 +520,12 @@ export int main() {
             if (silence_start != nullptr) {
               long double silence_start_double =
                   std::stod(std::string(silence_start->value));
-              std::cout << "silence_start: "
-                        << llroundl(silence_start_double /
-                                    av_q2d(audio_time_base))
-                        << std::endl;
+              int64_t silence_start =
+                  llroundl(silence_start_double / av_q2d(audio_time_base));
+              std::cout << "silence_start: " << silence_start << " detected at "
+                        << audio_filter_frame->pts << std::endl;
+
+              last_silence_start = silence_start;
 
               // TODO copy file from last silence end until this silence start
             }
@@ -526,10 +533,15 @@ export int main() {
               // this conversion is terrible
               long double silence_end_double =
                   std::stod(std::string(silence_end->value));
-              std::cout << "silence_end: "
-                        << llroundl(silence_end_double /
-                                    av_q2d(audio_time_base))
-                        << std::endl;
+              int64_t silence_end =
+                  llroundl(silence_end_double / av_q2d(audio_time_base));
+              std::cout << "silence_end: " << silence_end << " detected at "
+                        << audio_filter_frame->pts << std::endl;
+
+              silences.emplace_back(last_silence_start, silence_end);
+
+              // we probably can't immediately start rendering here because we
+              // currently have rounding bugs
 
               // render file from last keyframe to this silence end, then write
               // keyframe. maybe the keyframe could be before the last
@@ -540,11 +552,15 @@ export int main() {
             // this at all std::cout << "audio filtered until: " <<
             // audio_filter_frame->pts << std::endl;
 
-            // TODO FIXME improve the filter impl that it tells you until where it analyzed and returns time as integer
+            // TODO FIXME improve the filter impl that it tells you until where
+            // it analyzed and returns time as integer maybe also let it send
+            // start and end in the end packet
           }
         }
       }
+    }
 
+    /*
       if (packet != nullptr && packet->stream_index == video_stream_index) {
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
         av_packet_rescale_ts(
@@ -565,7 +581,7 @@ export int main() {
         packet->stream_index = 0;
         my_av_write_frame(output_format_context, packet);
       }
-    }
+*/
 
     my_av_write_trailer(output_format_context);
 
