@@ -623,20 +623,22 @@ export int main() {
               dts_difference /
               av_q2d(
                   av_format_context->streams[audio_stream_index]->time_base));
-          packet->pts -= llroundl(
-              pts_difference /
-              av_q2d(
-                  av_format_context->streams[audio_stream_index]->time_base)) - 1;
+          packet->pts -=
+              llroundl(pts_difference /
+                       av_q2d(av_format_context->streams[audio_stream_index]
+                                  ->time_base)) -
+              1;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
 
-          //std::cout << "stream: " << 0 << " dts; " << packet->dts << " pts; " << packet->pts
-          //          << std::endl;
+          // std::cout << "stream: " << 0 << " dts; " << packet->dts << " pts; "
+          // << packet->pts
+          //           << std::endl;
 
-          //my_av_interleaved_write_frame(output_format_context, packet);
+          my_av_interleaved_write_frame(output_format_context, packet);
         }
 
         // 187285365
@@ -652,31 +654,32 @@ export int main() {
               dts_difference /
               av_q2d(
                   av_format_context->streams[video_stream_index]->time_base));
-          packet->pts -= llroundl(
-              pts_difference /
-              av_q2d(
-                  av_format_context->streams[video_stream_index]->time_base)) - 1;
+          packet->pts -=
+              llroundl(pts_difference /
+                       av_q2d(av_format_context->streams[video_stream_index]
+                                  ->time_base)) -
+              1;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; " << packet->pts
-                    << std::endl;
+          std::cout << "stream: " << 1 << " dts; " << packet->dts << " pts; "
+                    << packet->pts << std::endl;
 
           // packets are out of order bruh
 
           // dts need to be in order
-          //my_av_interleaved_write_frame(output_format_context, packet);
+          my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
       rendered_until = silence.second;
-      pts_difference += silence.second - silence.first; // hacky
-      dts_difference += silence.second - silence.first; // hacky
+      pts_difference += silence.second - silence.first - 0.0001; // hacky
+      dts_difference += silence.second - silence.first - 0.0001; // hacky
     }
 
     my_av_write_trailer(output_format_context);
