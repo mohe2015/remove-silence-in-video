@@ -497,8 +497,8 @@ export int main() {
       if (packet != nullptr) {
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
         if (!frames
-                 .emplace(std::make_pair(cloned_packet->stream_index,
-                                         cloned_packet->pts),
+                 .emplace(std::make_pair(cloned_packet->pts,
+                                         cloned_packet->stream_index),
                           cloned_packet)
                  .second) {
           throw std::string("duplicate");
@@ -577,26 +577,29 @@ export int main() {
                 << silence.second << std::endl;
 
       // copy from last until silence_start
-      for (int i = rendered_until; i < silence.first; i++) {
-        MyAVPacket audio_packet =
-            my_av_packet_clone(frames.at(std::make_pair(0, i)));
-        av_packet_rescale_ts(
-            audio_packet.get(),
-            av_format_context->streams[audio_stream_index]->time_base,
-            output_audio_stream->time_base);
-        audio_packet->pos = -1;
-        audio_packet->stream_index = 0;
-        my_av_write_frame(output_format_context, audio_packet);
+      for (auto p = frames.lower_bound(std::make_pair(rendered_until, 0));
+           p != frames.upper_bound(std::make_pair(silence.first, 2)); ++p) {
+        if (p->second->stream_index == audio_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p->second);
+          av_packet_rescale_ts(
+              packet.get(),
+              av_format_context->streams[audio_stream_index]->time_base,
+              output_audio_stream->time_base);
+          packet->pos = -1;
+          packet->stream_index = 0;
+          my_av_write_frame(output_format_context, packet);
+        }
 
-        MyAVPacket video_packet =
-            my_av_packet_clone(frames.at(std::make_pair(1, i)));
-        av_packet_rescale_ts(
-            video_packet.get(),
-            av_format_context->streams[video_stream_index]->time_base,
-            output_video_stream->time_base);
-        video_packet->pos = -1;
-        video_packet->stream_index = 1;
-        my_av_write_frame(output_format_context, video_packet);
+        if (p->second->stream_index == video_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p->second);
+          av_packet_rescale_ts(
+              packet.get(),
+              av_format_context->streams[video_stream_index]->time_base,
+              output_video_stream->time_base);
+          packet->pos = -1;
+          packet->stream_index = 1;
+          my_av_write_frame(output_format_context, packet);
+        }
       }
 
       // to create keyframe at silence_end we need to go from last keyframe
