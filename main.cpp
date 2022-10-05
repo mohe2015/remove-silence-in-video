@@ -53,6 +53,7 @@ export using MyAVFrame = std::shared_ptr<AVFrame>;
 export using MyAVFilterGraph = std::shared_ptr<AVFilterGraph>;
 export using MyAVFilterInOut = std::shared_ptr<AVFilterInOut>;
 export using MyAVFilterContext = std::shared_ptr<AVFilterContext>;
+export using MyAVStream = std::shared_ptr<AVStream>;
 
 static MyAVFormatContext my_avformat_open_input(std::string filename) {
   AVFormatContext *av_format_context = nullptr;
@@ -266,6 +267,31 @@ static void my_av_buffersrc_add_frame(MyAVFilterContext filter_context,
   }
 }
 
+static MyAVFormatContext my_avformat_alloc_context() {
+  AVFormatContext* format_context = avformat_alloc_context();
+  if (format_context == nullptr) {
+    throw std::string("avformat_alloc_context failed");
+  }
+  return MyAVFormatContext(format_context, &avformat_free_context);
+}
+
+static MyAVFormatContext my_avformat_alloc_output_context2(std::string format_name) {
+  AVFormatContext *format_context;
+  int ret = avformat_alloc_output_context2(&format_context, nullptr, format_name.c_str(), nullptr);
+  if (ret < 0) {
+    throw std::string("avformat_alloc_output_context2 failed");
+  }
+  return MyAVFormatContext(format_context, &avformat_free_context);
+}
+
+static MyAVStream my_avformat_new_stream(MyAVFormatContext format_context) {
+  AVStream* stream = avformat_new_stream(format_context.get(), nullptr);
+  if (stream == nullptr) {
+    throw std::string("avformat_new_stream failed");
+  }
+  return MyAVStream(format_context, stream);
+}
+
 static std::tuple<MyAVFilterContext, MyAVFilterContext>
 build_filter_tree(MyAVFormatContext format_context,
                   MyAVCodecContext audio_codec_context,
@@ -374,6 +400,15 @@ export int main() {
 
     std::set<int64_t> keyframe_locations;
     std::map<int64_t, MyAVPacket> frames;
+
+    // https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html
+    // https://ffmpeg.org/doxygen/trunk/remuxing_8c-example.html#a48
+    std::cout << av_format_context->iformat->name << std::endl;
+
+    MyAVFormatContext output_format_context = my_avformat_alloc_output_context2("mp4");
+
+    MyAVStream output_video_stream = my_avformat_new_stream(output_format_context);
+    MyAVStream output_audio_stream = my_avformat_new_stream(output_format_context);
 
     while (my_av_read_frame(av_format_context, packet)) {
 
