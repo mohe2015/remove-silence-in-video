@@ -330,7 +330,7 @@ static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
                                           MyAVPacket packet) {
   int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
-    throw std::string("av_write_frame failed");
+    throw std::string("av_interleaved_write_frame failed");
   }
 }
 
@@ -419,8 +419,8 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
 
 export int main() {
   try {
-    std::string filename = "file:TjAa0wOe5k4.mp4";
-    std::string output_filename = "file:TjAa0wOe5k4-output.mp4";
+    std::string filename = "file:c1_2.mp4";
+    std::string output_filename = "file:c1_2-output.mp4";
     std::string format = "mp4";
 
     MyAVFormatContext av_format_context = my_avformat_open_input(filename);
@@ -626,7 +626,7 @@ export int main() {
           packet->pts -= llroundl(
               pts_difference /
               av_q2d(
-                  av_format_context->streams[audio_stream_index]->time_base));
+                  av_format_context->streams[audio_stream_index]->time_base)) - 1;
 
           std::cout << "dts: " << packet->dts << " pts: " << packet->pts
                     << std::endl;
@@ -636,8 +636,13 @@ export int main() {
               av_format_context->streams[audio_stream_index]->time_base,
               output_audio_stream->time_base);
 
+          std::cout << "dts; " << packet->dts << " pts; " << packet->pts
+                    << std::endl;
+
           my_av_interleaved_write_frame(output_format_context, packet);
         }
+
+        // 187285365
 
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
@@ -653,7 +658,7 @@ export int main() {
           packet->pts -= llroundl(
               pts_difference /
               av_q2d(
-                  av_format_context->streams[video_stream_index]->time_base));
+                  av_format_context->streams[video_stream_index]->time_base)) - 1;
 
           std::cout << "dts: " << packet->dts << " pts: " << packet->pts
                     << std::endl;
@@ -663,8 +668,8 @@ export int main() {
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          // std::cout << "dts; " << packet->dts << " pts; " << packet->pts <<
-          // std::endl;
+          std::cout << "dts; " << packet->dts << " pts; " << packet->pts
+                    << std::endl;
 
           // packets are out of order bruh
 
