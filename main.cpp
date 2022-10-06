@@ -448,7 +448,7 @@ static MyAVCodec my_avcodec_find_encoder(MyAVCodecContext format_context) {
 
 export int main() {
   try {
-    //av_log_set_level(AV_LOG_TRACE);
+    av_log_set_level(AV_LOG_ERROR);
 
     std::string filename = "file:c1_2.mp4";
     std::string output_filename = "file:c1_2-output.mp4";
@@ -680,6 +680,8 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 1;
 
+          std::cout << "dts: " << packet->dts << std::endl;
+
           packet->dts -= llroundl(
               dts_difference /
               av_q2d(
@@ -690,10 +692,14 @@ export int main() {
                                   ->time_base)) -
               1;
 
+            std::cout << "modified: " << packet->dts << std::endl;
+
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
+
+          std::cout << "rescaled dts: " << packet->dts << std::endl;
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -750,7 +756,7 @@ export int main() {
           my_avcodec_send_packet(video_codec_ctx, packet);
 
           while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) { // another function that randomly calls unref on the frame
-            last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()));
+            last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()), my_av_frame_free);
           }
         }
       }
@@ -762,8 +768,6 @@ export int main() {
       if (!last_video_frame.has_value()) {
         throw std::string("no last video frame found");
       }
-
-      std::cout << "my_avcodec_send_frame" << std::endl;
 
       if (!avcodec_is_open(video_encoding_context.get())) {
         throw std::string("avcoded_is_open");
@@ -812,6 +816,8 @@ export int main() {
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
+        std::cout << "rdts: " << video_packet->dts << std::endl;
+
         video_packet->dts -= llroundl(
             dts_difference /
             av_q2d(av_format_context->streams[video_stream_index]->time_base));
@@ -820,11 +826,15 @@ export int main() {
                      av_q2d(av_format_context->streams[video_stream_index]
                                 ->time_base)) -
             1;
+          
+        std::cout << "rmodified: " << video_packet->dts << std::endl;
 
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
+        
+        std::cout << "rrescaled dts: " << video_packet->dts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
       }
