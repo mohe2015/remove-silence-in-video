@@ -663,7 +663,7 @@ export int main() {
           packet->stream_index = 0;
 
           packet->dts -= llroundl(
-              dts_difference /
+              dts_difference / // AAH THIS IS THE LINE!!!! we need to get the actual dts_difference between the cut out frames
               av_q2d(
                   av_format_context->streams[audio_stream_index]->time_base));
           packet->pts -=
