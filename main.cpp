@@ -579,12 +579,12 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
-    const MyAVCodec audio_encoder = my_avcodec_find_encoder(audio_codec_ctx);
+    //const MyAVCodec audio_encoder = my_avcodec_find_encoder(audio_codec_ctx);
 
     MyAVCodecContext video_encoding_context =
         my_avcodec_alloc_context3(video_encoder);
-    MyAVCodecContext audio_encoding_context =
-        my_avcodec_alloc_context3(audio_encoder);
+    /*MyAVCodecContext audio_encoding_context =
+        my_avcodec_alloc_context3(audio_encoder);*/
 
     video_encoding_context->height = video_codec_ctx->height;
     video_encoding_context->width = video_codec_ctx->width;
@@ -599,14 +599,14 @@ export int main() {
      */
     video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
 
+/*
     audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
     int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
                                      &audio_codec_ctx->ch_layout);
     if (ret < 0)
       throw std::string("av_channel_layout_copy failed");
-    /* take first format from list of supported formats */
     audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
-    audio_encoding_context->time_base = (AVRational){1, audio_encoding_context->sample_rate};
+    audio_encoding_context->time_base = (AVRational){1, audio_encoding_context->sample_rate};*/
 
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
       video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -617,10 +617,11 @@ export int main() {
     out_stream->time_base = video_encoding_context->time_base;
     stream_ctx[i].enc_ctx = video_encoding_context;*/
 
+/*
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
       audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-    my_avcodec_open2(audio_encoding_context, audio_encoder);
+    my_avcodec_open2(audio_encoding_context, audio_encoder);*/
     /*my_avcodec_parameters_from_context(out_stream->codecpar,
                                        audio_encoding_context);
     out_stream->time_base = audio_encoding_context->time_base;
@@ -738,6 +739,7 @@ export int main() {
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
 
+          // this fails?
           my_avcodec_send_packet(video_codec_ctx, packet);
 
           while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
