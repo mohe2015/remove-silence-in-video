@@ -163,7 +163,7 @@ static void my_avcodec_send_frame(MyAVCodecContext codec_context,
                                   MyAVFrame frame) {
   int ret = avcodec_send_frame(codec_context.get(), frame.get());
   if (ret != 0) {
-    throw std::string("my_avcodec_send_frame failed");
+    throw std::string("my_avcodec_send_frame failed "+ std::to_string(ret));
   }
 }
 
@@ -612,6 +612,7 @@ export int main() {
       video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     my_avcodec_open2(video_encoding_context, video_encoder);
+    // TODO FIXME probably this? (we need exactly the same parameters though)
     /*my_avcodec_parameters_from_context(out_stream->codecpar,
                                        video_encoding_context);
     out_stream->time_base = video_encoding_context->time_base;
@@ -721,7 +722,7 @@ export int main() {
                   return b.second->dts > a.second->dts;
                 });
 
-      MyAVFrame last_video_frame; // TODO FIXME optional<>
+      std::optional<MyAVFrame> last_video_frame; // TODO FIXME optional<>
       MyAVFrame last_audio_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
       //avcodec_flush_buffers(audio_codec_ctx.get());
@@ -753,7 +754,18 @@ export int main() {
 
       // TODO FIXME reencode and add packets
       //my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
-      my_avcodec_send_frame(video_encoding_context, last_video_frame);
+      if (!last_video_frame.has_value()) {
+        throw std::string("no last video frame found");
+      }
+
+      std::cout << "my_avcodec_send_frame" << std::endl;
+
+      /*
+        if (!avcodec_is_open(avctx) || !av_codec_is_encoder(avctx->codec))
+         return AVERROR(EINVAL);
+         
+         */
+      my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
 
       /*MyAVPacket audio_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
