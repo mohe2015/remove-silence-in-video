@@ -720,18 +720,20 @@ export int main() {
                   return b.second->dts > a.second->dts;
                 });
 
-      MyAVFrame last_video_frame;
+      MyAVFrame last_video_frame; // TODO FIXME optional<>
       MyAVFrame last_audio_frame;
-      for (auto p : sorted) {
+      for (auto p : sorted_keyframe_gen) {
+        /*
         if (p.second->stream_index == audio_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
 
           my_avcodec_send_packet(audio_codec_ctx, packet);
 
           while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
-            last_video_frame = video_frame;
+            last_audio_frame = audio_frame;
           }
         }
+        */
 
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
@@ -747,10 +749,10 @@ export int main() {
       // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
 
       // TODO FIXME reencode and add packets
-      my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
+      //my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
       my_avcodec_send_frame(video_encoding_context, last_video_frame);
 
-      MyAVPacket audio_packet = my_av_packet_alloc();
+      /*MyAVPacket audio_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
         audio_packet->pos = -1;
         audio_packet->stream_index = 0;
@@ -770,7 +772,7 @@ export int main() {
             output_video_stream->time_base);
 
         my_av_interleaved_write_frame(output_format_context, audio_packet);
-      }
+      }*/
 
       MyAVPacket video_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
