@@ -1,4 +1,3 @@
-#include <libavcodec/codec.h>
 module;
 
 extern "C" {
@@ -11,6 +10,7 @@ extern "C" {
 #include <libavformat/avio.h>
 #include <libavutil/avutil.h>
 #include <libavutil/bprint.h>
+#include <libavcodec/codec.h>
 }
 
 export module main;
@@ -159,6 +159,14 @@ static void my_avcodec_send_packet(MyAVCodecContext codec_context,
   }
 }
 
+static void my_avcodec_send_frame(MyAVCodecContext codec_context,
+                                  MyAVFrame frame) {
+  int ret = avcodec_send_frame(codec_context.get(), frame.get());
+  if (ret != 0) {
+    throw std::string("my_avcodec_send_frame failed");
+  }
+}
+
 static bool my_avcodec_receive_frame(MyAVCodecContext codec_context,
                                      MyAVFrame frame) {
   int ret = avcodec_receive_frame(codec_context.get(), frame.get());
@@ -166,6 +174,18 @@ static bool my_avcodec_receive_frame(MyAVCodecContext codec_context,
     return false;
   } else if (ret < 0) {
     throw std::string("my_avcodec_receive_frame failed");
+  } else {
+    return true;
+  }
+}
+
+static bool my_avcodec_receive_packet(MyAVCodecContext codec_context,
+                                      MyAVPacket packet) {
+  int ret = avcodec_receive_packet(codec_context.get(), packet.get());
+  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+    return false;
+  } else if (ret < 0) {
+    throw std::string("avcodec_receive_packet failed");
   } else {
     return true;
   }
@@ -592,20 +612,19 @@ export int main() {
       video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     my_avcodec_open2(video_encoding_context, video_encoder);
-    my_avcodec_parameters_from_context(out_stream->codecpar,
+    /*my_avcodec_parameters_from_context(out_stream->codecpar,
                                        video_encoding_context);
     out_stream->time_base = video_encoding_context->time_base;
-    stream_ctx[i].enc_ctx = video_encoding_context;
+    stream_ctx[i].enc_ctx = video_encoding_context;*/
 
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
       audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     my_avcodec_open2(audio_encoding_context, audio_encoder);
-    my_avcodec_parameters_from_context(out_stream->codecpar,
+    /*my_avcodec_parameters_from_context(out_stream->codecpar,
                                        audio_encoding_context);
-
     out_stream->time_base = audio_encoding_context->time_base;
-    stream_ctx[i].enc_ctx = audio_encoding_context;
+    stream_ctx[i].enc_ctx = audio_encoding_context;*/
 
     double rendered_until = 0;
     double dts_difference = 0;
@@ -673,6 +692,10 @@ export int main() {
         }
       }
 
+      rendered_until = silence.second;
+      pts_difference += silence.second - silence.first - 0.0001; // hacky
+      dts_difference += silence.second - silence.first - 0.0001; // hacky
+
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
       auto keyframe_it = std::lower_bound(
@@ -724,10 +747,52 @@ export int main() {
       // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
 
       // TODO FIXME reencode and add packets
+      my_avcodec_send_frame(audio_codec_ctx, last_audio_frame);
+      my_avcodec_send_frame(video_codec_ctx, last_video_frame);
 
-      rendered_until = silence.second;
-      pts_difference += silence.second - silence.first - 0.0001; // hacky
-      dts_difference += silence.second - silence.first - 0.0001; // hacky
+      MyAVPacket audio_packet = my_av_packet_alloc();
+      while (my_avcodec_receive_packet(audio_codec_ctx, audio_packet)) {
+        audio_packet->pos = -1;
+        audio_packet->stream_index = 0;
+
+        audio_packet->dts -= llroundl(
+            dts_difference /
+            av_q2d(av_format_context->streams[audio_stream_index]->time_base));
+        audio_packet->pts -=
+            llroundl(pts_difference /
+                     av_q2d(av_format_context->streams[audio_stream_index]
+                                ->time_base)) -
+            1;
+
+        av_packet_rescale_ts(
+            audio_packet.get(),
+            av_format_context->streams[audio_stream_index]->time_base,
+            output_video_stream->time_base);
+
+        my_av_interleaved_write_frame(output_format_context, audio_packet);
+      }
+
+      MyAVPacket video_packet = my_av_packet_alloc();
+      while (my_avcodec_receive_packet(video_codec_ctx, video_packet)) {
+        video_packet->pos = -1;
+        video_packet->stream_index = 1;
+
+        video_packet->dts -= llroundl(
+            dts_difference /
+            av_q2d(av_format_context->streams[video_stream_index]->time_base));
+        video_packet->pts -=
+            llroundl(pts_difference /
+                     av_q2d(av_format_context->streams[video_stream_index]
+                                ->time_base)) -
+            1;
+
+        av_packet_rescale_ts(
+            video_packet.get(),
+            av_format_context->streams[video_stream_index]->time_base,
+            output_video_stream->time_base);
+
+        my_av_interleaved_write_frame(output_format_context, video_packet);
+      }
     }
 
     my_av_write_trailer(output_format_context);
