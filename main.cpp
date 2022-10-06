@@ -637,7 +637,8 @@ export int main() {
     double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
-      std::cout << "silence " << silence.first << "-" << silence.second << std::endl;
+      std::cout << "silence " << silence.first << "-" << silence.second
+                << std::endl;
 
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
@@ -681,7 +682,7 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 1;
 
-          //std::cout << "dts: " << packet->dts << std::endl;
+          std::cout << "dts: " << packet->dts << std::endl;
 
           packet->dts -= llroundl(
               dts_difference /
@@ -693,14 +694,14 @@ export int main() {
                                   ->time_base)) -
               1;
 
-            //std::cout << "modified: " << packet->dts << std::endl;
+          std::cout << "modified: " << packet->dts << std::endl;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          //std::cout << "rescaled dts: " << packet->dts << std::endl;
+          std::cout << "rescaled dts: " << packet->dts << std::endl;
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -760,8 +761,11 @@ export int main() {
 
           my_avcodec_send_packet(video_codec_ctx, packet);
 
-          while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) { // another function that randomly calls unref on the frame
-            last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()), my_av_frame_free);
+          while (my_avcodec_receive_frame(
+              video_codec_ctx, video_frame)) { // another function that randomly
+                                               // calls unref on the frame
+            last_video_frame =
+                MyAVFrame(av_frame_clone(video_frame.get()), my_av_frame_free);
           }
         }
       }
@@ -775,8 +779,9 @@ export int main() {
       }
 
       // you need to recompile ffmpeg with --with-debug
-      // break main.cpp:782, set step-mode on, run, s, info locals, info variables, info args, list, break libavutil/frame.c:128
-      
+      // break main.cpp:782, set step-mode on, run, s, info locals, info
+      // variables, info args, list, break libavutil/frame.c:128
+
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
       my_avcodec_send_frame(video_encoding_context, nullptr); // flush
 
@@ -810,21 +815,21 @@ export int main() {
         std::cout << "rdts: " << video_packet->dts << std::endl;
 
         video_packet->dts -= llroundl(
-            (-frame_we_need+dts_difference) /
+            (dts_difference) /
             av_q2d(av_format_context->streams[video_stream_index]->time_base));
         video_packet->pts -=
-            llroundl((-frame_we_need+pts_difference) /
+            llroundl((pts_difference) /
                      av_q2d(av_format_context->streams[video_stream_index]
                                 ->time_base)) -
             1;
-          
+
         std::cout << "rmodified: " << video_packet->dts << std::endl;
 
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
-        
+
         std::cout << "rrescaled dts: " << video_packet->dts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
