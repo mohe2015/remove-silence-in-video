@@ -637,6 +637,7 @@ export int main() {
     double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
+      std::cout << "silence " << silence.first << "-" << silence.second << std::endl;
 
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
@@ -680,7 +681,7 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 1;
 
-          std::cout << "dts: " << packet->dts << std::endl;
+          //std::cout << "dts: " << packet->dts << std::endl;
 
           packet->dts -= llroundl(
               dts_difference /
@@ -692,14 +693,14 @@ export int main() {
                                   ->time_base)) -
               1;
 
-            std::cout << "modified: " << packet->dts << std::endl;
+            //std::cout << "modified: " << packet->dts << std::endl;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          std::cout << "rescaled dts: " << packet->dts << std::endl;
+          //std::cout << "rescaled dts: " << packet->dts << std::endl;
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -720,6 +721,8 @@ export int main() {
 
       double last_keyframe = *keyframe_it;
       double frame_we_need = silence.second;
+
+      std::cout << last_keyframe << "-" << frame_we_need << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(
@@ -753,6 +756,8 @@ export int main() {
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
 
+          std::cout << "ordts: " << p.second->dts << std::endl;
+
           my_avcodec_send_packet(video_codec_ctx, packet);
 
           while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) { // another function that randomly calls unref on the frame
@@ -769,25 +774,11 @@ export int main() {
         throw std::string("no last video frame found");
       }
 
-      if (!avcodec_is_open(video_encoding_context.get())) {
-        throw std::string("avcoded_is_open");
-      }
-
-      if (!av_codec_is_encoder(video_encoding_context->codec)) {
-        throw std::string("av_codec_is_encoder");
-      }
-
-      if (av_image_check_size2(video_encoding_context->width, video_encoding_context->height, video_encoding_context->max_pixels, AV_PIX_FMT_NONE, 0, video_encoding_context.get())) {
-        throw std::string("av_image_check_size2");
-      }
-
-      //     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format); 
-      // desc is null
-
-      // sudo pacman -U https://geo.mirror.pkgbuild.com/extra-debug/os/x86_64/ffmpeg4.4-debug-4.4.2-3-x86_64.pkg.tar.zst
-      // /usr/lib/libavcodec.so.59
+      // you need to recompile ffmpeg with --with-debug
       // break main.cpp:782, set step-mode on, run, s, info locals, info variables, info args, list, break libavutil/frame.c:128
+      
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
+      my_avcodec_send_frame(video_encoding_context, nullptr); // flush
 
       /*MyAVPacket audio_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
@@ -819,10 +810,10 @@ export int main() {
         std::cout << "rdts: " << video_packet->dts << std::endl;
 
         video_packet->dts -= llroundl(
-            dts_difference /
+            (-frame_we_need+dts_difference) /
             av_q2d(av_format_context->streams[video_stream_index]->time_base));
         video_packet->pts -=
-            llroundl(pts_difference /
+            llroundl((-frame_we_need+pts_difference) /
                      av_q2d(av_format_context->streams[video_stream_index]
                                 ->time_base)) -
             1;
