@@ -3,6 +3,7 @@ module;
 extern "C" {
 #include <cassert>
 #include <libavcodec/avcodec.h>
+#include <libavcodec/codec.h>
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
@@ -10,7 +11,7 @@ extern "C" {
 #include <libavformat/avio.h>
 #include <libavutil/avutil.h>
 #include <libavutil/bprint.h>
-#include <libavcodec/codec.h>
+#include <libavutil/imgutils.h>
 }
 
 export module main;
@@ -163,7 +164,7 @@ static void my_avcodec_send_frame(MyAVCodecContext codec_context,
                                   MyAVFrame frame) {
   int ret = avcodec_send_frame(codec_context.get(), frame.get());
   if (ret != 0) {
-    throw std::string("my_avcodec_send_frame failed "+ std::to_string(ret));
+    throw std::string("my_avcodec_send_frame failed " + std::to_string(ret));
   }
 }
 
@@ -579,7 +580,7 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
-    //const MyAVCodec audio_encoder = my_avcodec_find_encoder(audio_codec_ctx);
+    // const MyAVCodec audio_encoder = my_avcodec_find_encoder(audio_codec_ctx);
 
     MyAVCodecContext video_encoding_context =
         my_avcodec_alloc_context3(video_encoder);
@@ -599,14 +600,15 @@ export int main() {
      */
     video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
 
-/*
-    audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
-    int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
-                                     &audio_codec_ctx->ch_layout);
-    if (ret < 0)
-      throw std::string("av_channel_layout_copy failed");
-    audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
-    audio_encoding_context->time_base = (AVRational){1, audio_encoding_context->sample_rate};*/
+    /*
+        audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
+        int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
+                                         &audio_codec_ctx->ch_layout);
+        if (ret < 0)
+          throw std::string("av_channel_layout_copy failed");
+        audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
+        audio_encoding_context->time_base = (AVRational){1,
+       audio_encoding_context->sample_rate};*/
 
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
       video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -618,11 +620,11 @@ export int main() {
     out_stream->time_base = video_encoding_context->time_base;
     stream_ctx[i].enc_ctx = video_encoding_context;*/
 
-/*
-    if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
-      audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    /*
+        if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
+          audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-    my_avcodec_open2(audio_encoding_context, audio_encoder);*/
+        my_avcodec_open2(audio_encoding_context, audio_encoder);*/
     /*my_avcodec_parameters_from_context(out_stream->codecpar,
                                        audio_encoding_context);
     out_stream->time_base = audio_encoding_context->time_base;
@@ -725,7 +727,7 @@ export int main() {
       std::optional<MyAVFrame> last_video_frame; // TODO FIXME optional<>
       MyAVFrame last_audio_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
-      //avcodec_flush_buffers(audio_codec_ctx.get());
+      // avcodec_flush_buffers(audio_codec_ctx.get());
       for (auto p : sorted_keyframe_gen) {
         /*
         if (p.second->stream_index == audio_stream_index) {
@@ -753,18 +755,25 @@ export int main() {
       // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
 
       // TODO FIXME reencode and add packets
-      //my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
+      // my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
       if (!last_video_frame.has_value()) {
         throw std::string("no last video frame found");
       }
 
       std::cout << "my_avcodec_send_frame" << std::endl;
 
-      /*
-        if (!avcodec_is_open(avctx) || !av_codec_is_encoder(avctx->codec))
-         return AVERROR(EINVAL);
-         
-         */
+      if (!avcodec_is_open(video_encoding_context.get())) {
+        throw std::string("avcoded_is_open");
+      }
+
+      if (!av_codec_is_encoder(video_encoding_context->codec)) {
+        throw std::string("av_codec_is_encoder");
+      }
+
+      if (av_image_check_size2(video_encoding_context->width, video_encoding_context->height, video_encoding_context->max_pixels, AV_PIX_FMT_NONE, 0, video_encoding_context.get())) {
+        throw std::string("av_image_check_size2");
+      }
+
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
 
       /*MyAVPacket audio_packet = my_av_packet_alloc();
