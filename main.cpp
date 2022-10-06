@@ -711,8 +711,14 @@ export int main() {
       }
 
       rendered_until = silence.second;
-      pts_difference += silence.second - silence.first - 0.0001; // hacky
-      dts_difference += silence.second - silence.first - 0.0001; // hacky
+
+      // 0.005  1884158-1884158 0
+      // 0.0055 3614467 >= 3613500
+      //        5032049 >= 5031785
+      // 0.03       9490758 >= 9490758
+      //     0.08      24948082
+      pts_difference += silence.second - silence.first - 0.5; // hacky
+      dts_difference += silence.second - silence.first - 0.5; // hacky
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
@@ -819,6 +825,7 @@ export int main() {
 
         std::cout << "rdts: " << video_packet->dts << std::endl;
 
+        // 901881
         video_packet->dts -= llroundl(
             (dts_difference) /
             av_q2d(av_format_context->streams[video_stream_index]->time_base));
