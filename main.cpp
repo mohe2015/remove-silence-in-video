@@ -1,3 +1,4 @@
+#include <libavcodec/codec.h>
 module;
 
 extern "C" {
@@ -415,6 +416,14 @@ get_decoder(MyAVFormatContext format_context, AVMediaType media_type) {
   return std::make_tuple(stream_index, codec_context);
 }
 
+static MyAVCodec my_avcodec_find_encoder(MyAVCodecContext format_context) {
+  const AVCodec *codec = avcodec_find_encoder(format_context->codec_id);
+  if (codec == nullptr) {
+    throw std::string("avcodec_find_encoder failed");
+  }
+  return MyAVCodec(format_context, codec);
+}
+
 export int main() {
   try {
     std::string filename = "file:c1_2.mp4";
@@ -549,6 +558,55 @@ export int main() {
 
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
+    const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
+    const MyAVCodec audio_encoder = my_avcodec_find_encoder(audio_codec_ctx);
+
+    MyAVCodecContext video_encoding_context =
+        my_avcodec_alloc_context3(video_encoder);
+    MyAVCodecContext audio_encoding_context =
+        my_avcodec_alloc_context3(audio_encoder);
+
+    video_encoding_context->height = video_codec_ctx->height;
+    video_encoding_context->width = video_codec_ctx->width;
+    video_encoding_context->sample_aspect_ratio =
+        video_codec_ctx->sample_aspect_ratio;
+    /* take first format from list of supported formats */
+    if (video_encoder->pix_fmts)
+      video_encoding_context->pix_fmt = video_encoder->pix_fmts[0];
+    else
+      video_encoding_context->pix_fmt = video_codec_ctx->pix_fmt;
+    /* video time_base can be set to whatever is handy and supported by encoder
+     */
+    video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
+
+    int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
+                                     &audio_codec_ctx->ch_layout);
+    if (ret < 0)
+      throw std::string("av_channel_layout_copy failed");
+    /* take first format from list of supported formats */
+    audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
+    audio_encoding_context->time_base =
+        (AVRational){1, audio_encoding_context->sample_rate};
+
+    if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
+      video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+    my_avcodec_open2(video_encoding_context, video_encoder);
+    my_avcodec_parameters_from_context(out_stream->codecpar,
+                                       video_encoding_context);
+    out_stream->time_base = video_encoding_context->time_base;
+    stream_ctx[i].enc_ctx = video_encoding_context;
+
+    if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
+      audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+    my_avcodec_open2(audio_encoding_context, audio_encoder);
+    my_avcodec_parameters_from_context(out_stream->codecpar,
+                                       audio_encoding_context);
+
+    out_stream->time_base = audio_encoding_context->time_base;
+    stream_ctx[i].enc_ctx = audio_encoding_context;
+
     double rendered_until = 0;
     double dts_difference = 0;
     double pts_difference = 0;
@@ -662,6 +720,8 @@ export int main() {
           }
         }
       }
+
+      // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
 
       // TODO FIXME reencode and add packets
 
