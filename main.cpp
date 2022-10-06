@@ -28,6 +28,7 @@ import <map>;
 import <cmath>;
 import <vector>;
 import <utility>;
+import <thread>;
 
 static void my_avformat_close_input(AVFormatContext *av_format_context) {
   avformat_close_input(&av_format_context);
@@ -447,6 +448,8 @@ static MyAVCodec my_avcodec_find_encoder(MyAVCodecContext format_context) {
 
 export int main() {
   try {
+    //av_log_set_level(AV_LOG_TRACE);
+
     std::string filename = "file:c1_2.mp4";
     std::string output_filename = "file:c1_2-output.mp4";
     std::string format = "mp4";
@@ -746,8 +749,8 @@ export int main() {
 
           my_avcodec_send_packet(video_codec_ctx, packet);
 
-          while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
-            last_video_frame = video_frame;
+          while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) { // another function that randomly calls unref on the frame
+            last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()));
           }
         }
       }
@@ -774,6 +777,12 @@ export int main() {
         throw std::string("av_image_check_size2");
       }
 
+      //     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format); 
+      // desc is null
+
+      // sudo pacman -U https://geo.mirror.pkgbuild.com/extra-debug/os/x86_64/ffmpeg4.4-debug-4.4.2-3-x86_64.pkg.tar.zst
+      // /usr/lib/libavcodec.so.59
+      // break main.cpp:782, set step-mode on, run, s, info locals, info variables, info args, list, break libavutil/frame.c:128
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
 
       /*MyAVPacket audio_packet = my_av_packet_alloc();
