@@ -599,14 +599,14 @@ export int main() {
      */
     video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
 
+    audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
     int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
                                      &audio_codec_ctx->ch_layout);
     if (ret < 0)
       throw std::string("av_channel_layout_copy failed");
     /* take first format from list of supported formats */
     audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
-    audio_encoding_context->time_base =
-        (AVRational){1, audio_encoding_context->sample_rate};
+    audio_encoding_context->time_base = (AVRational){1, audio_encoding_context->sample_rate};
 
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
       video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -747,11 +747,11 @@ export int main() {
       // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
 
       // TODO FIXME reencode and add packets
-      my_avcodec_send_frame(audio_codec_ctx, last_audio_frame);
-      my_avcodec_send_frame(video_codec_ctx, last_video_frame);
+      my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
+      my_avcodec_send_frame(video_encoding_context, last_video_frame);
 
       MyAVPacket audio_packet = my_av_packet_alloc();
-      while (my_avcodec_receive_packet(audio_codec_ctx, audio_packet)) {
+      while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
         audio_packet->pos = -1;
         audio_packet->stream_index = 0;
 
@@ -773,7 +773,7 @@ export int main() {
       }
 
       MyAVPacket video_packet = my_av_packet_alloc();
-      while (my_avcodec_receive_packet(video_codec_ctx, video_packet)) {
+      while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
