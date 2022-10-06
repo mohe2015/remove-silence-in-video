@@ -482,7 +482,7 @@ export int main() {
 
     my_avformat_write_header(output_format_context);
 
-    std::set<int64_t> keyframe_locations;
+    std::set<double> keyframe_locations;
     std::map<std::pair<double, int64_t>, MyAVPacket> frames;
     std::vector<std::pair<double, double>> silences;
 
@@ -508,7 +508,10 @@ export int main() {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
-          keyframe_locations.insert(video_frame->pts);
+          keyframe_locations.insert(
+              av_q2d(
+                  av_format_context->streams[video_stream_index]->time_base) *
+              video_frame->pts);
         }
       }
 
@@ -544,13 +547,17 @@ export int main() {
       }
     }
 
+    video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
+
     double rendered_until = 0;
     double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
+
+      // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>> sorted(
           frames.lower_bound(std::make_pair(
-              rendered_until, std::numeric_limits<int64_t>::max())),
+              rendered_until, std::numeric_limits<int64_t>::min())),
           frames.upper_bound(std::make_pair(
               silence.first, std::numeric_limits<int64_t>::max())));
       std::sort(sorted.begin(), sorted.end(),
@@ -610,6 +617,54 @@ export int main() {
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
+      auto keyframe_it = std::lower_bound(
+          keyframe_locations.rbegin(), keyframe_locations.rend(),
+          silence.second, std::greater<double>());
+      if (keyframe_it == keyframe_locations.rend()) {
+        throw std::string("no keyframe found!");
+      }
+
+      double last_keyframe = *keyframe_it;
+      double frame_we_need = silence.second;
+
+      std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
+          sorted_keyframe_gen(
+              frames.lower_bound(std::make_pair(
+                  last_keyframe, std::numeric_limits<int64_t>::min())),
+              frames.upper_bound(std::make_pair(
+                  frame_we_need, std::numeric_limits<int64_t>::max())));
+      std::sort(sorted_keyframe_gen.begin(), sorted_keyframe_gen.end(),
+                [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
+                   std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
+                  return b.second->dts > a.second->dts;
+                });
+
+      MyAVFrame last_video_frame;
+      MyAVFrame last_audio_frame;
+      for (auto p : sorted) {
+        if (p.second->stream_index == audio_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
+
+          my_avcodec_send_packet(audio_codec_ctx, packet);
+
+          while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
+            last_video_frame = video_frame;
+          }
+        }
+
+        if (p.second->stream_index == video_stream_index) {
+          MyAVPacket packet = my_av_packet_clone(p.second);
+
+          my_avcodec_send_packet(video_codec_ctx, packet);
+
+          while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
+            last_video_frame = video_frame;
+          }
+        }
+      }
+
+      // TODO FIXME reencode and add packets
+
       rendered_until = silence.second;
       pts_difference += silence.second - silence.first - 0.0001; // hacky
       dts_difference += silence.second - silence.first - 0.0001; // hacky
