@@ -723,6 +723,8 @@ export int main() {
 
       MyAVFrame last_video_frame; // TODO FIXME optional<>
       MyAVFrame last_audio_frame;
+      avcodec_flush_buffers(video_codec_ctx.get());
+      //avcodec_flush_buffers(audio_codec_ctx.get());
       for (auto p : sorted_keyframe_gen) {
         /*
         if (p.second->stream_index == audio_stream_index) {
@@ -739,7 +741,6 @@ export int main() {
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
 
-          // this fails?
           my_avcodec_send_packet(video_codec_ctx, packet);
 
           while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
