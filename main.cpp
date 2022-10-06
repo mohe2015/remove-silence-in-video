@@ -714,6 +714,7 @@ export int main() {
       pts_difference += silence.second - silence.first;
 
       // TODO FIXME do the same for the audio stream?
+      // THIS IS THE CURRENT BUG SOURCE
       dts_difference +=  frames.at(std::make_pair(
               silence.second, video_stream_index))->dts - 
       frames.at(std::make_pair(
