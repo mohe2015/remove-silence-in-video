@@ -579,7 +579,7 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     double rendered_until = 0;
-    uint64_t pts_difference = 0;
+    int64_t pts_difference = 0;
     for (auto silence : silences) {
       const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
 
@@ -678,11 +678,14 @@ export int main() {
                    std::pair<int64_t, double> search_value) {
                   return value.first.second < search_value.second;
                 });
+      if (just_before_it == frames.rend()) {
+        throw std::string("not found!");
+      }
 
-      int64_t silence_first_pts =
-          just_before_it
-              ->second->pts;
-      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
+      int64_t silence_first_pts = sorted_video.back().second->pts;
+      int64_t silence_second_pts = just_before_it->second->pts;
+
+      std::cout << "silence_first " << silence_first_pts << " silence_second " << silence_second_pts << std::endl;
 
       pts_difference +=
           silence_second_pts -
