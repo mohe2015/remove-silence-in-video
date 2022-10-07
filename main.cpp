@@ -415,8 +415,8 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-25dB:duration=5",
-                          inputs, outputs);
+  my_avfilter_graph_parse(
+      filter_graph, "silencedetect=noise=-25dB:duration=0.5", inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
 
