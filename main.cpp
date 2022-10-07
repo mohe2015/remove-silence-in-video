@@ -349,6 +349,8 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
 
 static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
                                           MyAVPacket packet) {
+  std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+
   int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
     throw std::string("av_interleaved_write_frame failed");
@@ -610,7 +612,7 @@ export int main() {
        */
       video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
 
-      /*
+      /*""
           audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
           int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
                                            &audio_codec_ctx->ch_layout);
@@ -649,11 +651,11 @@ export int main() {
               rendered_until, std::numeric_limits<int64_t>::min())),
           frames.upper_bound(std::make_pair(
               silence.first, std::numeric_limits<int64_t>::max())));
-      std::sort(sorted.begin(), sorted.end(),
+      /*std::sort(sorted.begin(), sorted.end(),
                 [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
                    std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
                   return b.second->dts > a.second->dts;
-                });
+                });*/
 
       for (auto p : sorted) {
         if (p.second->stream_index == audio_stream_index) {
@@ -671,6 +673,7 @@ export int main() {
                        av_q2d(av_format_context->streams[audio_stream_index]
                                   ->time_base)) -
               1;
+          packet->dts = packet->pts;
 
           av_packet_rescale_ts(
               packet.get(),
@@ -685,7 +688,7 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 1;
 
-          std::cout << "dts: " << packet->dts << std::endl;
+          //std::cout << "dts: " << packet->dts << std::endl;
 
           packet->dts -= llroundl(
               dts_difference /
@@ -695,30 +698,34 @@ export int main() {
               llroundl(pts_difference /
                        av_q2d(av_format_context->streams[video_stream_index]
                                   ->time_base));
+          packet->dts = packet->pts;
 
-          std::cout << "modified: " << packet->dts << std::endl;
+          //std::cout << "modified: " << packet->dts << std::endl;
 
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
 
-          std::cout << "rescaled dts: " << packet->dts << std::endl;
+          //std::cout << "rescaled dts: " << packet->dts << std::endl;
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
 
+      std::cout << "generate keyframe:" << std::endl;
+
       rendered_until = silence.second;
 
-      pts_difference += silence.second - silence.first;
+      // 534000 >= 533279
+      pts_difference += silence.second - silence.first - 0.01;
 
       // TODO FIXME do the same for the audio stream?
       // THIS IS THE CURRENT BUG SOURCE
-      dts_difference +=  frames.at(std::make_pair(
+      /*dts_difference +=  frames.at(std::make_pair(
               silence.second, video_stream_index))->dts - 
       frames.at(std::make_pair(
-              silence.first, video_stream_index))->dts;
+              silence.first, video_stream_index))->dts;*/
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
@@ -732,7 +739,7 @@ export int main() {
       double last_keyframe = *keyframe_it;
       double frame_we_need = silence.second;
 
-      std::cout << last_keyframe << "-" << frame_we_need << std::endl;
+      std::cout << "keyframe generate from range: " << last_keyframe << "-" << frame_we_need << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(
@@ -740,11 +747,11 @@ export int main() {
                   last_keyframe, std::numeric_limits<int64_t>::min())),
               frames.upper_bound(std::make_pair(
                   frame_we_need, std::numeric_limits<int64_t>::max())));
-      std::sort(sorted_keyframe_gen.begin(), sorted_keyframe_gen.end(),
+      /*std::sort(sorted_keyframe_gen.begin(), sorted_keyframe_gen.end(),
                 [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
                    std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
                   return b.second->dts > a.second->dts;
-                });
+                });*/
 
       std::optional<MyAVFrame> last_video_frame; // TODO FIXME optional<>
       MyAVFrame last_audio_frame;
@@ -766,7 +773,7 @@ export int main() {
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
 
-          std::cout << "ordts: " << p.second->dts << std::endl;
+          //std::cout << "ordts: " << p.second->dts << std::endl;
 
           my_avcodec_send_packet(video_codec_ctx, packet);
 
@@ -823,7 +830,7 @@ export int main() {
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
-        std::cout << "rdts: " << video_packet->dts << std::endl;
+        //std::cout << "rdts: " << video_packet->dts << std::endl;
 
         video_packet->dts -= llroundl(
             dts_difference /
@@ -832,15 +839,16 @@ export int main() {
             llroundl(pts_difference /
                      av_q2d(av_format_context->streams[video_stream_index]
                                 ->time_base));
+        video_packet->dts = video_packet->pts;
 
-        std::cout << "rmodified: " << video_packet->dts << std::endl;
+        //std::cout << "rmodified: " << video_packet->dts << std::endl;
 
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
 
-        std::cout << "rrescaled dts: " << video_packet->dts << std::endl;
+        //std::cout << "rrescaled dts: " << video_packet->dts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
       }
