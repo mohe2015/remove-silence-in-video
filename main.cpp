@@ -643,7 +643,15 @@ export int main() {
 
       rendered_until = silence.second;
 
-      pts_difference += silence.second - silence.first;
+      /*
+      copy  165376
+copy  165888
+keyframe 8.33333-11.2725
+regen 173056
+moved 153870
+*/
+
+      pts_difference += silence.second - silence.first - 0.01; // TODO FIXME do this based on video frames?
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
