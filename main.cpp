@@ -741,6 +741,8 @@ export int main() {
           throw std::string("no last video frame found");
         }
 
+        std::cout << "pict type " << last_video_frame->get()->pict_type << "_" << AV_PICTURE_TYPE_I << std::endl;
+
         my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
         my_avcodec_send_frame(video_encoding_context, nullptr);
 
