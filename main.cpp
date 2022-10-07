@@ -349,7 +349,8 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
 
 static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
                                           MyAVPacket packet) {
-  //std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+  // std::cout << "dts: " << packet->dts << " pts: " << packet->pts <<
+  // std::endl;
 
   int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
@@ -606,7 +607,7 @@ export int main() {
       if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
         video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-      my_avcodec_open2(video_encoding_context, video_encoder);    
+      my_avcodec_open2(video_encoding_context, video_encoder);
 
       std::cout << "silence " << silence.first << "-" << silence.second
                 << std::endl;
@@ -649,10 +650,10 @@ export int main() {
               dts_difference /
               av_q2d(
                   av_format_context->streams[video_stream_index]->time_base));
-          packet->pts -=
-              llroundl(pts_difference /
-                       av_q2d(av_format_context->streams[video_stream_index]
-                                  ->time_base));
+          packet->pts -= llroundl(
+              pts_difference /
+              av_q2d(
+                  av_format_context->streams[video_stream_index]->time_base));
           packet->dts = packet->pts;
 
           av_packet_rescale_ts(
@@ -680,7 +681,8 @@ export int main() {
       double last_keyframe = *keyframe_it;
       double frame_we_need = silence.second;
 
-      std::cout << "keyframe generate from range: " << last_keyframe << "-" << frame_we_need << std::endl;
+      std::cout << "keyframe generate from range: " << last_keyframe << "-"
+                << frame_we_need << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(
@@ -719,10 +721,9 @@ export int main() {
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
-        video_packet->pts -=
-            llroundl(pts_difference /
-                     av_q2d(av_format_context->streams[video_stream_index]
-                                ->time_base));
+        video_packet->pts -= llroundl(
+            pts_difference /
+            av_q2d(av_format_context->streams[video_stream_index]->time_base));
         video_packet->dts = video_packet->pts;
 
         av_packet_rescale_ts(
