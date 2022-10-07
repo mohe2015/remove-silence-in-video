@@ -583,6 +583,17 @@ export int main() {
       }
     }
 
+    // when there is no keyframe between two silences we need to render them in
+    // one go?
+
+    // for every silence we need to start decoding from the keyframe before the
+    // end of the silence we need so emit a keyframe and then encode from the
+    // end of the silence to the next keyframe then we can copy pasta if two
+    // silences don't have a keyframe in between we need to continue encoding
+    // until the next silence starts if there is still no keyframe inside that
+    // silence we need to continue encoding after the silence starting with a
+    // keyframe
+
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     double rendered_until = 0;
