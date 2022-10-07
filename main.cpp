@@ -588,59 +588,25 @@ export int main() {
     double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
-
       const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
-      // const MyAVCodec audio_encoder =
-      // my_avcodec_find_encoder(audio_codec_ctx);
 
       MyAVCodecContext video_encoding_context =
           my_avcodec_alloc_context3(video_encoder);
-      /*MyAVCodecContext audio_encoding_context =
-          my_avcodec_alloc_context3(audio_encoder);*/
 
       video_encoding_context->height = video_codec_ctx->height;
       video_encoding_context->width = video_codec_ctx->width;
       video_encoding_context->sample_aspect_ratio =
           video_codec_ctx->sample_aspect_ratio;
-      /* take first format from list of supported formats */
       if (video_encoder->pix_fmts)
         video_encoding_context->pix_fmt = video_encoder->pix_fmts[0];
       else
         video_encoding_context->pix_fmt = video_codec_ctx->pix_fmt;
-      /* video time_base can be set to whatever is handy and supported by
-       * encoder
-       */
-      video_encoding_context->time_base = av_inv_q(video_codec_ctx->framerate);
-
-      /*""
-          audio_encoding_context->sample_rate = audio_codec_ctx->sample_rate;
-          int ret = av_channel_layout_copy(&audio_encoding_context->ch_layout,
-                                           &audio_codec_ctx->ch_layout);
-          if (ret < 0)
-            throw std::string("av_channel_layout_copy failed");
-          audio_encoding_context->sample_fmt = audio_encoder->sample_fmts[0];
-          audio_encoding_context->time_base = (AVRational){1,
-         audio_encoding_context->sample_rate};*/
+      video_encoding_context->time_base = video_codec_ctx->time_base;
 
       if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
         video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-      my_avcodec_open2(video_encoding_context, video_encoder);
-      // TODO FIXME probably this? (we need exactly the same parameters though)
-      /*my_avcodec_parameters_from_context(out_stream->codecpar,
-                                         video_encoding_context);
-      out_stream->time_base = video_encoding_context->time_base;
-      stream_ctx[i].enc_ctx = video_encoding_context;*/
-
-      /*
-          if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
-            audio_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-          my_avcodec_open2(audio_encoding_context, audio_encoder);*/
-      /*my_avcodec_parameters_from_context(out_stream->codecpar,
-                                         audio_encoding_context);
-      out_stream->time_base = audio_encoding_context->time_base;
-      stream_ctx[i].enc_ctx = audio_encoding_context;*/
+      my_avcodec_open2(video_encoding_context, video_encoder);    
 
       std::cout << "silence " << silence.first << "-" << silence.second
                 << std::endl;
@@ -651,11 +617,6 @@ export int main() {
               rendered_until, std::numeric_limits<int64_t>::min())),
           frames.upper_bound(std::make_pair(
               silence.first, std::numeric_limits<int64_t>::max())));
-      /*std::sort(sorted.begin(), sorted.end(),
-                [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
-                   std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
-                  return b.second->dts > a.second->dts;
-                });*/
 
       for (auto p : sorted) {
         if (p.second->stream_index == audio_stream_index) {
@@ -664,10 +625,6 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 0;
 
-          packet->dts -= llroundl(
-              dts_difference / // AAH THIS IS THE LINE!!!! we need to get the actual dts_difference between the cut out frames
-              av_q2d(
-                  av_format_context->streams[audio_stream_index]->time_base));
           packet->pts -=
               llroundl(pts_difference /
                        av_q2d(av_format_context->streams[audio_stream_index]
@@ -688,8 +645,6 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = 1;
 
-          //std::cout << "dts: " << packet->dts << std::endl;
-
           packet->dts -= llroundl(
               dts_difference /
               av_q2d(
@@ -700,14 +655,10 @@ export int main() {
                                   ->time_base));
           packet->dts = packet->pts;
 
-          //std::cout << "modified: " << packet->dts << std::endl;
-
           av_packet_rescale_ts(
               packet.get(),
               av_format_context->streams[video_stream_index]->time_base,
               output_video_stream->time_base);
-
-          //std::cout << "rescaled dts: " << packet->dts << std::endl;
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -715,15 +666,7 @@ export int main() {
 
       rendered_until = silence.second;
 
-      // 3621756 >= 3621199
       pts_difference += silence.second - silence.first - 0.04;
-
-      // TODO FIXME do the same for the audio stream?
-      // THIS IS THE CURRENT BUG SOURCE
-      /*dts_difference +=  frames.at(std::make_pair(
-              silence.second, video_stream_index))->dts - 
-      frames.at(std::make_pair(
-              silence.first, video_stream_index))->dts;*/
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
@@ -745,33 +688,13 @@ export int main() {
                   last_keyframe, std::numeric_limits<int64_t>::min())),
               frames.upper_bound(std::make_pair(
                   frame_we_need, std::numeric_limits<int64_t>::max())));
-      /*std::sort(sorted_keyframe_gen.begin(), sorted_keyframe_gen.end(),
-                [](std::pair<std::pair<double, int64_t>, MyAVPacket> a,
-                   std::pair<std::pair<double, int64_t>, MyAVPacket> b) {
-                  return b.second->dts > a.second->dts;
-                });*/
 
-      std::optional<MyAVFrame> last_video_frame; // TODO FIXME optional<>
+      std::optional<MyAVFrame> last_video_frame;
       MyAVFrame last_audio_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
-      // avcodec_flush_buffers(audio_codec_ctx.get());
       for (auto p : sorted_keyframe_gen) {
-        /*
-        if (p.second->stream_index == audio_stream_index) {
-          MyAVPacket packet = my_av_packet_clone(p.second);
-
-          my_avcodec_send_packet(audio_codec_ctx, packet);
-
-          while (my_avcodec_receive_frame(audio_codec_ctx, audio_frame)) {
-            last_audio_frame = audio_frame;
-          }
-        }
-        */
-
         if (p.second->stream_index == video_stream_index) {
           MyAVPacket packet = my_av_packet_clone(p.second);
-
-          //std::cout << "ordts: " << p.second->dts << std::endl;
 
           my_avcodec_send_packet(video_codec_ctx, packet);
 
@@ -784,67 +707,28 @@ export int main() {
         }
       }
 
-      // https://ffmpeg.org/doxygen/trunk/transcoding_8c-example.html#a141
-
-      // TODO FIXME reencode and add packets
-      // my_avcodec_send_frame(audio_encoding_context, last_audio_frame);
       if (!last_video_frame.has_value()) {
         throw std::string("no last video frame found");
       }
 
-      // you need to recompile ffmpeg with --with-debug
-      // break main.cpp:782, set step-mode on, run, s, info locals, info
-      // variables, info args, list, break libavutil/frame.c:128
-
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
       my_avcodec_send_frame(video_encoding_context, nullptr);
-
-      /*MyAVPacket audio_packet = my_av_packet_alloc();
-      while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
-        audio_packet->pos = -1;
-        audio_packet->stream_index = 0;
-
-        audio_packet->dts -= llroundl(
-            dts_difference /
-            av_q2d(av_format_context->streams[audio_stream_index]->time_base));
-        audio_packet->pts -=
-            llroundl(pts_difference /
-                     av_q2d(av_format_context->streams[audio_stream_index]
-                                ->time_base)) -
-            1;
-
-        av_packet_rescale_ts(
-            audio_packet.get(),
-            av_format_context->streams[audio_stream_index]->time_base,
-            output_video_stream->time_base);
-
-        my_av_interleaved_write_frame(output_format_context, audio_packet);
-      }*/
 
       MyAVPacket video_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
-        //std::cout << "rdts: " << video_packet->dts << std::endl;
-
-        video_packet->dts -= llroundl(
-            dts_difference /
-            av_q2d(av_format_context->streams[video_stream_index]->time_base));
         video_packet->pts -=
             llroundl(pts_difference /
                      av_q2d(av_format_context->streams[video_stream_index]
                                 ->time_base));
         video_packet->dts = video_packet->pts;
 
-        //std::cout << "rmodified: " << video_packet->dts << std::endl;
-
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
-
-        //std::cout << "rrescaled dts: " << video_packet->dts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
       }
