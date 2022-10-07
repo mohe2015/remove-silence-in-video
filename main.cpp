@@ -640,10 +640,18 @@ export int main() {
             packet->pts -= pts_difference;
             packet->dts = packet->pts;
 
+            if (p.second->stream_index == video_stream_index) {
+              std::cout << "subtracted  " << p.second->pts << std::endl;
+            }
+
             av_packet_rescale_ts(
                 packet.get(),
                 av_format_context->streams[p.second->stream_index]->time_base,
                 output_stream->time_base);
+
+            if (p.second->stream_index == video_stream_index) {
+              std::cout << "rescaled " << p.second->pts << std::endl;
+            }
 
             my_av_interleaved_write_frame(output_format_context, packet);
           }
@@ -672,7 +680,7 @@ export int main() {
               frames.upper_bound(std::make_pair(
                   video_stream_index, frame_we_need)));
 
-      auto just_before_it = frames.lower_bound(
+      auto just_before_it = frames.upper_bound(
           std::make_pair(video_stream_index, silence.first));
       if (just_before_it == frames.end()) {
         throw std::string("not found!");
@@ -731,6 +739,8 @@ export int main() {
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
+
+        std::cout << "rescaled " << video_packet->pts << "_" << video_packet->dts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
       }
