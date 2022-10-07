@@ -688,7 +688,7 @@ export int main() {
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(frames.lower_bound(std::make_pair(
                                   video_stream_index, last_keyframe)),
-                              frames.upper_bound(std::make_pair(
+                              frames.lower_bound(std::make_pair(
                                   video_stream_index, frame_we_need)));
 
       auto just_before_it =
