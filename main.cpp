@@ -705,22 +705,20 @@ export int main() {
 
       if (!sorted_keyframe_gen.empty()) {
         int64_t silence_first_pts = just_before_it->second->pts;
-        int64_t silence_second_pts =
-            sorted_keyframe_gen.back().second->pts; // this is wrong?
-                                                    /*
-                                                          std::cout
-                                                              << "silence_first " << silence_first_pts << "("
-                                                              << silence_first_pts *
-                                                                     av_q2d(
-                                                                         av_format_context->streams[video_stream_index]->time_base)
-                                                              << ")"
-                                                              << " silence_second " << silence_second_pts << "("
-                                                              << silence_second_pts *
-                                                                     av_q2d(
-                                                                         av_format_context->streams[video_stream_index]->time_base)
-                                                              << ")" << std::endl;
-                                                    */
-        // TODO FIXME maybe also just the subtracting here is bad?
+        int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
+        /*
+              std::cout
+                  << "silence_first " << silence_first_pts << "("
+                  << silence_first_pts *
+                         av_q2d(
+                             av_format_context->streams[video_stream_index]->time_base)
+                  << ")"
+                  << " silence_second " << silence_second_pts << "("
+                  << silence_second_pts *
+                         av_q2d(
+                             av_format_context->streams[video_stream_index]->time_base)
+                  << ")" << std::endl;
+        */
         pts_difference += silence_second_pts - silence_first_pts;
 
         // std::cout << "rendered-until " << rendered_until << std::endl;
@@ -758,8 +756,6 @@ export int main() {
         last_video_frame->get()->pict_type =
             AV_PICTURE_TYPE_I; // TODO FIXME does this work?
 
-        // http://ffmpeg.org/doxygen/trunk/doc_2examples_2decoding_encoding_8c-example.html
-
         my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
         my_avcodec_send_frame(video_encoding_context, nullptr);
 
@@ -786,6 +782,8 @@ export int main() {
 
           // std::cout << "reencode rescaled " << video_packet->pts <<
           // std::endl;
+
+          // I assume we need to reencode until next keyframe
 
           my_av_interleaved_write_frame(output_format_context, video_packet);
         }
