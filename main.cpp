@@ -349,7 +349,7 @@ static void my_avformat_write_header(MyAVFormatContext format_context) {
 
 static void my_av_interleaved_write_frame(MyAVFormatContext format_context,
                                           MyAVPacket packet) {
-  std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
+  //std::cout << "dts: " << packet->dts << " pts: " << packet->pts << std::endl;
 
   int ret = av_interleaved_write_frame(format_context.get(), packet.get());
   if (ret < 0) {
@@ -713,8 +713,6 @@ export int main() {
         }
       }
 
-      std::cout << "generate keyframe:" << std::endl;
-
       rendered_until = silence.second;
 
       // 3621756 >= 3621199
@@ -800,8 +798,6 @@ export int main() {
 
       my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
       my_avcodec_send_frame(video_encoding_context, nullptr);
-      // avcodec_flush_buffers(video_encoding_context.get()); // may be
-      // unsupported, then we need to send null packet and recreate encoder
 
       /*MyAVPacket audio_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(audio_encoding_context, audio_packet)) {
