@@ -672,21 +672,21 @@ export int main() {
               frames.upper_bound(std::make_pair(
                   video_stream_index, frame_we_need)));
 
-      /*
-           copy  165376
-     copy  165888
-     keyframe 8.33333-11.2725
-     regen 173056
-     moved 153870
-     */
+      auto just_before_it = std::lower_bound(
+          frames.rbegin(), frames.rend(),
+          std::make_pair(video_stream_index, silence.second), [](std::pair<std::pair<int64_t, double>, MyAVPacket> value,
+                   std::pair<int64_t, double> search_value) {
+                  return value.first.second < search_value.second;
+                });
+
       int64_t silence_first_pts =
-          sorted_video.back()
-              .second->pts; // TODO FIXME this can be an audio frame
+          just_before_it
+              ->second->pts;
       int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
 
       pts_difference +=
           silence_second_pts -
-          silence_first_pts; // TODO FIXME do this based on video frames?
+          silence_first_pts;
 
       rendered_until = silence.second;
 
