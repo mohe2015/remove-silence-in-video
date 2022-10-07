@@ -622,7 +622,7 @@ export int main() {
           if (p.second->stream_index == audio_stream_index ||
               p.second->stream_index == video_stream_index) {
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "copy  " << p.second->pts << std::endl;
+              std::cout << "copy original " << p.second->pts << std::endl;
             }
 
             int stream_index =
@@ -634,14 +634,11 @@ export int main() {
 
             MyAVPacket packet = my_av_packet_clone(p.second);
 
-            packet->pos = -1;
-            packet->stream_index = stream_index;
-
             packet->pts -= pts_difference;
             packet->dts = packet->pts;
 
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "subtracted  " << p.second->pts << std::endl;
+              std::cout << "copy moved " << packet->pts << std::endl;
             }
 
             av_packet_rescale_ts(
@@ -650,8 +647,11 @@ export int main() {
                 output_stream->time_base);
 
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "rescaled " << p.second->pts << std::endl;
+              std::cout << "copy rescaled " << packet->pts << std::endl;
             }
+
+            packet->pos = -1;
+            packet->stream_index = stream_index;
 
             my_av_interleaved_write_frame(output_format_context, packet);
           }
@@ -674,14 +674,13 @@ export int main() {
                 << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
-          sorted_keyframe_gen(
-              frames.lower_bound(std::make_pair(
-                  video_stream_index, last_keyframe)),
-              frames.upper_bound(std::make_pair(
-                  video_stream_index, frame_we_need)));
+          sorted_keyframe_gen(frames.lower_bound(std::make_pair(
+                                  video_stream_index, last_keyframe)),
+                              frames.upper_bound(std::make_pair(
+                                  video_stream_index, frame_we_need)));
 
-      auto just_before_it = frames.upper_bound(
-          std::make_pair(video_stream_index, silence.first));
+      auto just_before_it =
+          frames.upper_bound(std::make_pair(video_stream_index, silence.first));
       if (just_before_it == frames.end()) {
         throw std::string("not found!");
       }
@@ -689,11 +688,10 @@ export int main() {
       int64_t silence_first_pts = just_before_it->second->pts;
       int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
 
-      std::cout << "silence_first " << silence_first_pts << " silence_second " << silence_second_pts << std::endl;
+      std::cout << "silence_first " << silence_first_pts << " silence_second "
+                << silence_second_pts << std::endl;
 
-      pts_difference +=
-          silence_second_pts -
-          silence_first_pts;
+      pts_difference += silence_second_pts - silence_first_pts;
 
       rendered_until = silence.second;
 
@@ -723,9 +721,9 @@ export int main() {
 
       MyAVPacket video_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
-        std::cout << "regen " << video_packet->pts << std::endl;
+        std::cout << "reencode original " << video_packet->pts << std::endl;
 
-        std::cout << "diff " << pts_difference << std::endl;
+        std::cout << "reencode diff " << pts_difference << std::endl;
 
         video_packet->pos = -1;
         video_packet->stream_index = 1;
@@ -733,14 +731,14 @@ export int main() {
         video_packet->pts -= pts_difference;
         video_packet->dts = video_packet->pts;
 
-        std::cout << "moved " << video_packet->pts << std::endl;
+        std::cout << "reencode moved " << video_packet->pts << std::endl;
 
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
 
-        std::cout << "rescaled " << video_packet->pts << "_" << video_packet->dts << std::endl;
+        std::cout << "reencode rescaled " << video_packet->pts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
       }
