@@ -510,6 +510,7 @@ export int main() {
         output_video_stream->codecpar,
         av_format_context->streams[video_stream_index]->codecpar);
     output_video_stream->codecpar->codec_tag = 0;
+    output_video_stream->time_base = video_codec_ctx->time_base; // test
 
     av_dump_format(output_format_context.get(), 0, output_filename.c_str(), 1);
 
@@ -733,6 +734,7 @@ export int main() {
 
         std::cout << "reencode moved " << video_packet->pts << std::endl;
 
+        // seems like rescaling can produce the same output value for different inputs because stupid
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
