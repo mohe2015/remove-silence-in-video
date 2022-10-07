@@ -473,9 +473,6 @@ export int main() {
     std::tie(video_stream_index, video_codec_ctx) =
         get_decoder(av_format_context, AVMEDIA_TYPE_VIDEO);
 
-    std::cout << "video stream index: " << video_stream_index
-              << " audio stream index: " << audio_stream_index << std::endl;
-
     MyAVFilterContext abuffersrc_ctx = nullptr;
     MyAVFilterContext abuffersink_ctx = nullptr;
     std::tie(abuffersrc_ctx, abuffersink_ctx) = build_filter_tree(
@@ -527,17 +524,14 @@ export int main() {
     while (my_av_read_frame(av_format_context, packet)) {
       if (packet != nullptr) {
         MyAVPacket cloned_packet = my_av_packet_clone(packet);
-        if (!frames
+        frames
                  .emplace(std::make_pair(
                               cloned_packet->pts *
                                   av_q2d(av_format_context
                                              ->streams[packet->stream_index]
                                              ->time_base),
                               cloned_packet->stream_index),
-                          cloned_packet)
-                 .second) {
-          throw std::string("duplicate");
-        }
+                          cloned_packet);
       }
 
       if (packet == nullptr || packet->stream_index == video_stream_index) {
@@ -586,7 +580,6 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     double rendered_until = 0;
-    double dts_difference = 0;
     double pts_difference = 0;
     for (auto silence : silences) {
       const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
@@ -609,7 +602,7 @@ export int main() {
 
       my_avcodec_open2(video_encoding_context, video_encoder);
 
-      std::cout << "silence " << silence.first << "-" << silence.second
+      std::cout << "silence  " << silence.first << "-" << silence.second
                 << std::endl;
 
       // copy all frames from last rendered until start of this silence
@@ -620,46 +613,29 @@ export int main() {
               silence.first, std::numeric_limits<int64_t>::max())));
 
       for (auto p : sorted) {
-        if (p.second->stream_index == audio_stream_index) {
+        if (p.second->stream_index == audio_stream_index || p.second->stream_index == video_stream_index) {
+          if (p.second->stream_index == video_stream_index) {
+            std::cout << "copy  " << p.second->pts << std::endl;
+          }
+
+          int stream_index = p.second->stream_index == audio_stream_index ? 0 : 1;
+          MyAVStream output_stream = p.second->stream_index == audio_stream_index ? output_audio_stream : output_video_stream;
+
           MyAVPacket packet = my_av_packet_clone(p.second);
 
           packet->pos = -1;
-          packet->stream_index = 0;
+          packet->stream_index = stream_index;
 
           packet->pts -=
               llroundl(pts_difference /
-                       av_q2d(av_format_context->streams[audio_stream_index]
-                                  ->time_base)) -
-              1;
+                       av_q2d(av_format_context->streams[p.second->stream_index]
+                                  ->time_base));
           packet->dts = packet->pts;
 
           av_packet_rescale_ts(
               packet.get(),
-              av_format_context->streams[audio_stream_index]->time_base,
-              output_audio_stream->time_base);
-
-          my_av_interleaved_write_frame(output_format_context, packet);
-        }
-
-        if (p.second->stream_index == video_stream_index) {
-          MyAVPacket packet = my_av_packet_clone(p.second);
-          packet->pos = -1;
-          packet->stream_index = 1;
-
-          packet->dts -= llroundl(
-              dts_difference /
-              av_q2d(
-                  av_format_context->streams[video_stream_index]->time_base));
-          packet->pts -= llroundl(
-              pts_difference /
-              av_q2d(
-                  av_format_context->streams[video_stream_index]->time_base));
-          packet->dts = packet->pts;
-
-          av_packet_rescale_ts(
-              packet.get(),
-              av_format_context->streams[video_stream_index]->time_base,
-              output_video_stream->time_base);
+              av_format_context->streams[p.second->stream_index]->time_base,
+              output_stream->time_base);
 
           my_av_interleaved_write_frame(output_format_context, packet);
         }
@@ -667,7 +643,7 @@ export int main() {
 
       rendered_until = silence.second;
 
-      pts_difference += silence.second - silence.first - 0.04;
+      pts_difference += silence.second - silence.first;
 
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
@@ -681,7 +657,7 @@ export int main() {
       double last_keyframe = *keyframe_it;
       double frame_we_need = silence.second;
 
-      std::cout << "keyframe generate from range: " << last_keyframe << "-"
+      std::cout << "keyframe " << last_keyframe << "-"
                 << frame_we_need << std::endl;
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
@@ -692,7 +668,6 @@ export int main() {
                   frame_we_need, std::numeric_limits<int64_t>::max())));
 
       std::optional<MyAVFrame> last_video_frame;
-      MyAVFrame last_audio_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
       for (auto p : sorted_keyframe_gen) {
         if (p.second->stream_index == video_stream_index) {
@@ -718,6 +693,8 @@ export int main() {
 
       MyAVPacket video_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
+        std::cout << "regen " << video_packet->pts << std::endl;
+
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
@@ -725,6 +702,8 @@ export int main() {
             pts_difference /
             av_q2d(av_format_context->streams[video_stream_index]->time_base));
         video_packet->dts = video_packet->pts;
+
+        std::cout << "moved " << video_packet->pts << std::endl;
 
         av_packet_rescale_ts(
             video_packet.get(),
