@@ -641,12 +641,12 @@ export int main() {
             if (p.second->stream_index == video_stream_index) {
               std::cout << "copy moved " << packet->pts << std::endl;
             }
-
+/*
             av_packet_rescale_ts(
                 packet.get(),
                 av_format_context->streams[p.second->stream_index]->time_base,
                 output_stream->time_base);
-
+*/
             if (p.second->stream_index == video_stream_index) {
               std::cout << "copy rescaled " << packet->pts << std::endl;
             }
@@ -733,13 +733,13 @@ export int main() {
         video_packet->dts = video_packet->pts;
 
         std::cout << "reencode moved " << video_packet->pts << std::endl;
-
+/*
         // seems like rescaling can produce the same output value for different inputs because stupid
         av_packet_rescale_ts(
             video_packet.get(),
             av_format_context->streams[video_stream_index]->time_base,
             output_video_stream->time_base);
-
+*/
         std::cout << "reencode rescaled " << video_packet->pts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
