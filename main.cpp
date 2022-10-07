@@ -672,18 +672,14 @@ export int main() {
               frames.upper_bound(std::make_pair(
                   video_stream_index, frame_we_need)));
 
-      auto just_before_it = std::lower_bound(
-          frames.rbegin(), frames.rend(),
-          std::make_pair(video_stream_index, silence.second), [](std::pair<std::pair<int64_t, double>, MyAVPacket> value,
-                   std::pair<int64_t, double> search_value) {
-                  return value.first.second < search_value.second;
-                });
-      if (just_before_it == frames.rend()) {
+      auto just_before_it = frames.lower_bound(
+          std::make_pair(video_stream_index, silence.first));
+      if (just_before_it == frames.end()) {
         throw std::string("not found!");
       }
 
-      int64_t silence_first_pts = sorted_video.back().second->pts;
-      int64_t silence_second_pts = just_before_it->second->pts;
+      int64_t silence_first_pts = just_before_it->second->pts;
+      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
 
       std::cout << "silence_first " << silence_first_pts << " silence_second " << silence_second_pts << std::endl;
 
