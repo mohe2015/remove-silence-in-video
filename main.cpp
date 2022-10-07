@@ -668,9 +668,9 @@ export int main() {
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(
               frames.lower_bound(std::make_pair(
-                  last_keyframe, std::numeric_limits<int64_t>::min())),
+                  video_stream_index, last_keyframe)),
               frames.upper_bound(std::make_pair(
-                  frame_we_need, std::numeric_limits<int64_t>::max())));
+                  video_stream_index, frame_we_need)));
 
       /*
            copy  165376
