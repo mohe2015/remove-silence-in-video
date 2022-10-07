@@ -580,7 +580,7 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     double rendered_until = 0;
-    double pts_difference = 0;
+    int pts_difference = 0;
     for (auto silence : silences) {
       const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
 
@@ -626,10 +626,7 @@ export int main() {
           packet->pos = -1;
           packet->stream_index = stream_index;
 
-          packet->pts -=
-              llroundl(pts_difference /
-                       av_q2d(av_format_context->streams[p.second->stream_index]
-                                  ->time_base));
+          packet->pts -= pts_difference;
           packet->dts = packet->pts;
 
           av_packet_rescale_ts(
@@ -640,19 +637,7 @@ export int main() {
           my_av_interleaved_write_frame(output_format_context, packet);
         }
       }
-
-      rendered_until = silence.second;
-
-      /*
-      copy  165376
-copy  165888
-keyframe 8.33333-11.2725
-regen 173056
-moved 153870
-*/
-
-      pts_difference += silence.second - silence.first - 0.01; // TODO FIXME do this based on video frames?
-
+    
       // to create keyframe at silence_end we need to go from last keyframe
       // before silence_end to silence_end
       auto keyframe_it = std::lower_bound(
@@ -674,6 +659,20 @@ moved 153870
                   last_keyframe, std::numeric_limits<int64_t>::min())),
               frames.upper_bound(std::make_pair(
                   frame_we_need, std::numeric_limits<int64_t>::max())));
+
+ /*
+      copy  165376
+copy  165888
+keyframe 8.33333-11.2725
+regen 173056
+moved 153870
+*/
+      int64_t silence_first_pts = sorted.back().second->pts;
+      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
+
+      pts_difference += silence_second_pts - silence_first_pts; // TODO FIXME do this based on video frames?
+
+      rendered_until = silence.second;
 
       std::optional<MyAVFrame> last_video_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
@@ -706,9 +705,7 @@ moved 153870
         video_packet->pos = -1;
         video_packet->stream_index = 1;
 
-        video_packet->pts -= llroundl(
-            pts_difference /
-            av_q2d(av_format_context->streams[video_stream_index]->time_base));
+        video_packet->pts -= pts_difference;
         video_packet->dts = video_packet->pts;
 
         std::cout << "moved " << video_packet->pts << std::endl;
