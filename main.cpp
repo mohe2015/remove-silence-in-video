@@ -607,13 +607,13 @@ export int main() {
 
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
-          sorted_video(frames.lower_bound(
+          sorted_video(frames.upper_bound( // TODO FIXME the upper_bound here may loose frames
                            std::make_pair(video_stream_index, rendered_until)),
                        frames.upper_bound(
                            std::make_pair(video_stream_index, silence.first)));
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
-          sorted_audio(frames.lower_bound(
+          sorted_audio(frames.upper_bound(
                            std::make_pair(audio_stream_index, rendered_until)),
                        frames.upper_bound(
                            std::make_pair(audio_stream_index, silence.first)));
@@ -687,14 +687,21 @@ export int main() {
       }
 
       int64_t silence_first_pts = just_before_it->second->pts;
-      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts;
+      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts; // this is wrong?
 
-      std::cout << "silence_first " << silence_first_pts << " silence_second "
-                << silence_second_pts << std::endl;
+      std::cout << "silence_first " << silence_first_pts << "(" << silence_first_pts *
+                    av_q2d(av_format_context->streams[video_stream_index]
+                               ->time_base) << ")" << " silence_second "
+                << silence_second_pts << "(" << silence_second_pts *
+                    av_q2d(av_format_context->streams[video_stream_index]
+                               ->time_base) << ")" << std::endl;
 
+      // TODO FIXME maybe also just the subtracting here is bad?
       pts_difference += silence_second_pts - silence_first_pts;
 
-      rendered_until = silence.second;
+      rendered_until = silence.second; //  TODO FIXME THIS IS THE CURRENT BUG PLACE + 0.001 probably rounding bug?
+
+      std::cout << "rendered-until " << rendered_until << std::endl;
 
       std::optional<MyAVFrame> last_video_frame;
       avcodec_flush_buffers(video_codec_ctx.get());
