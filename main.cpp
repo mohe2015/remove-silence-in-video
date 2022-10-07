@@ -731,6 +731,10 @@ export int main() {
                 video_codec_ctx,
                 video_frame)) { // another function that randomly
                                 // calls unref on the frame
+              if (video_frame->pict_type == AV_PICTURE_TYPE_I) {
+                std::cout << "GOT A KEYFRAME" << std::endl;
+              }
+
               last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()),
                                            my_av_frame_free);
             }
@@ -741,7 +745,13 @@ export int main() {
           throw std::string("no last video frame found");
         }
 
-        std::cout << "pict type " << last_video_frame->get()->pict_type << "_" << AV_PICTURE_TYPE_I << std::endl;
+        std::cout << "pict type " << last_video_frame->get()->pict_type << "_"
+                  << AV_PICTURE_TYPE_I << std::endl;
+
+        last_video_frame->get()->pict_type =
+            AV_PICTURE_TYPE_I; // TODO FIXME does this work?
+
+        // http://ffmpeg.org/doxygen/trunk/doc_2examples_2decoding_encoding_8c-example.html
 
         my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
         my_avcodec_send_frame(video_encoding_context, nullptr);
