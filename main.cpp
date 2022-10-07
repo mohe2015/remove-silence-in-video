@@ -579,7 +579,7 @@ export int main() {
     video_codec_ctx->skip_frame = AVDiscard::AVDISCARD_NONE;
 
     double rendered_until = 0;
-    int pts_difference = 0;
+    uint64_t pts_difference = 0;
     for (auto silence : silences) {
       const MyAVCodec video_encoder = my_avcodec_find_encoder(video_codec_ctx);
 
@@ -717,6 +717,8 @@ export int main() {
       MyAVPacket video_packet = my_av_packet_alloc();
       while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
         std::cout << "regen " << video_packet->pts << std::endl;
+
+        std::cout << "diff " << pts_difference << std::endl;
 
         video_packet->pos = -1;
         video_packet->stream_index = 1;
