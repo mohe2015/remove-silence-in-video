@@ -415,8 +415,8 @@ build_filter_tree(MyAVFormatContext format_context,
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
-  my_avfilter_graph_parse(
-      filter_graph, "silencedetect=noise=-25dB:duration=0.25", inputs, outputs);
+  my_avfilter_graph_parse(filter_graph, "silencedetect=noise=-25dB:duration=5",
+                          inputs, outputs);
 
   my_avfilter_graph_config(filter_graph);
 
@@ -537,6 +537,12 @@ export int main() {
       if (packet == nullptr || packet->stream_index == video_stream_index) {
         my_avcodec_send_packet(video_codec_ctx, packet);
 
+        // ffprobe -loglevel error -select_streams v:0 -show_entries
+        // packet=pts_time,flags -of csv=print_section=0 input.mp4 | awk -F','
+        // '/K/ {print $1}'
+        // so the packet flags also say if its a keyframe and we don't need to
+        // decode? (probably depending on if type is correct)
+
         while (my_avcodec_receive_frame(video_codec_ctx, video_frame)) {
           keyframe_locations.insert(
               av_q2d(
@@ -601,19 +607,19 @@ export int main() {
         video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
       my_avcodec_open2(video_encoding_context, video_encoder);
-      /*
-            std::cout
-                << "silence " << silence.first << "("
-                << (uint64_t)(silence.first /
-                              av_q2d(av_format_context->streams[video_stream_index]
-                                         ->time_base))
-                << ")"
-                << "-" << silence.second << "("
-                << (uint64_t)(silence.second /
-                              av_q2d(av_format_context->streams[video_stream_index]
-                                         ->time_base))
-                << ")" << std::endl;
-      */
+
+      std::cout
+          << "silence " << silence.first << "("
+          << (uint64_t)(silence.first /
+                        av_q2d(av_format_context->streams[video_stream_index]
+                                   ->time_base))
+          << ")"
+          << "-" << silence.second << "("
+          << (uint64_t)(silence.second /
+                        av_q2d(av_format_context->streams[video_stream_index]
+                                   ->time_base))
+          << ")" << std::endl;
+
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_video(frames.lower_bound(
@@ -731,9 +737,9 @@ export int main() {
                 video_codec_ctx,
                 video_frame)) { // another function that randomly
                                 // calls unref on the frame
-              if (video_frame->pict_type == AV_PICTURE_TYPE_I) {
-                std::cout << "GOT A KEYFRAME" << std::endl;
-              }
+              // if (video_frame->pict_type == AV_PICTURE_TYPE_I) {
+              //   std::cout << "GOT A KEYFRAME" << std::endl;
+              // }
 
               last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()),
                                            my_av_frame_free);
@@ -745,8 +751,9 @@ export int main() {
           throw std::string("no last video frame found");
         }
 
-        std::cout << "pict type " << last_video_frame->get()->pict_type << "_"
-                  << AV_PICTURE_TYPE_I << std::endl;
+        // std::cout << "pict type " << last_video_frame->get()->pict_type <<
+        // "_"
+        //          << AV_PICTURE_TYPE_I << std::endl;
 
         last_video_frame->get()->pict_type =
             AV_PICTURE_TYPE_I; // TODO FIXME does this work?
