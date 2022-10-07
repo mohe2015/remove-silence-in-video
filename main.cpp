@@ -602,14 +602,23 @@ export int main() {
 
       my_avcodec_open2(video_encoding_context, video_encoder);
 
-      std::cout << "silence  " << silence.first << "-" << silence.second
-                << std::endl;
+      std::cout
+          << "silence " << silence.first << "("
+          << (uint64_t)(silence.first /
+                        av_q2d(av_format_context->streams[video_stream_index]
+                                   ->time_base))
+          << ")"
+          << "-" << silence.second << "("
+          << (uint64_t)(silence.second /
+                        av_q2d(av_format_context->streams[video_stream_index]
+                                   ->time_base))
+          << ")" << std::endl;
 
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
-          sorted_video(frames.upper_bound( // TODO FIXME the upper_bound here may loose frames
+          sorted_video(frames.lower_bound(
                            std::make_pair(video_stream_index, rendered_until)),
-                       frames.upper_bound(
+                       frames.lower_bound(
                            std::make_pair(video_stream_index, silence.first)));
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
@@ -641,12 +650,12 @@ export int main() {
             if (p.second->stream_index == video_stream_index) {
               std::cout << "copy moved " << packet->pts << std::endl;
             }
-/*
-            av_packet_rescale_ts(
-                packet.get(),
-                av_format_context->streams[p.second->stream_index]->time_base,
-                output_stream->time_base);
-*/
+            /*
+                        av_packet_rescale_ts(
+                            packet.get(),
+                            av_format_context->streams[p.second->stream_index]->time_base,
+                            output_stream->time_base);
+            */
             if (p.second->stream_index == video_stream_index) {
               std::cout << "copy rescaled " << packet->pts << std::endl;
             }
@@ -674,6 +683,8 @@ export int main() {
       std::cout << "keyframe " << last_keyframe << "-" << frame_we_need
                 << std::endl;
 
+      // ffprobe c1_2.mp4
+
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_keyframe_gen(frames.lower_bound(std::make_pair(
                                   video_stream_index, last_keyframe)),
@@ -687,19 +698,26 @@ export int main() {
       }
 
       int64_t silence_first_pts = just_before_it->second->pts;
-      int64_t silence_second_pts = sorted_keyframe_gen.back().second->pts; // this is wrong?
+      int64_t silence_second_pts =
+          sorted_keyframe_gen.back().second->pts; // this is wrong?
 
-      std::cout << "silence_first " << silence_first_pts << "(" << silence_first_pts *
-                    av_q2d(av_format_context->streams[video_stream_index]
-                               ->time_base) << ")" << " silence_second "
-                << silence_second_pts << "(" << silence_second_pts *
-                    av_q2d(av_format_context->streams[video_stream_index]
-                               ->time_base) << ")" << std::endl;
+      std::cout
+          << "silence_first " << silence_first_pts << "("
+          << silence_first_pts *
+                 av_q2d(
+                     av_format_context->streams[video_stream_index]->time_base)
+          << ")"
+          << " silence_second " << silence_second_pts << "("
+          << silence_second_pts *
+                 av_q2d(
+                     av_format_context->streams[video_stream_index]->time_base)
+          << ")" << std::endl;
 
       // TODO FIXME maybe also just the subtracting here is bad?
       pts_difference += silence_second_pts - silence_first_pts;
 
-      rendered_until = silence.second; //  TODO FIXME THIS IS THE CURRENT BUG PLACE + 0.001 probably rounding bug?
+      rendered_until = silence.second; //  TODO FIXME THIS IS THE CURRENT BUG
+                                       //  PLACE + 0.001 probably rounding bug?
 
       std::cout << "rendered-until " << rendered_until << std::endl;
 
@@ -740,13 +758,13 @@ export int main() {
         video_packet->dts = video_packet->pts;
 
         std::cout << "reencode moved " << video_packet->pts << std::endl;
-/*
-        // seems like rescaling can produce the same output value for different inputs because stupid
-        av_packet_rescale_ts(
-            video_packet.get(),
-            av_format_context->streams[video_stream_index]->time_base,
-            output_video_stream->time_base);
-*/
+        /*
+                // seems like rescaling can produce the same output value for
+           different inputs because stupid av_packet_rescale_ts(
+                    video_packet.get(),
+                    av_format_context->streams[video_stream_index]->time_base,
+                    output_video_stream->time_base);
+        */
         std::cout << "reencode rescaled " << video_packet->pts << std::endl;
 
         my_av_interleaved_write_frame(output_format_context, video_packet);
