@@ -650,7 +650,18 @@ export int main() {
 
             MyAVPacket packet = my_av_packet_clone(p.second);
 
-            packet->pts -= pts_difference;
+            if (p.second->stream_index == video_stream_index) {
+              packet->pts -= pts_difference; // TODO FIXME we're stupid the
+                                             // audio needs other value here
+            } else {
+              // TODO FIXME use exact rationals here
+              packet->pts -=
+                  pts_difference *
+                  av_q2d(av_format_context->streams[video_stream_index]
+                             ->time_base) /
+                  av_q2d(av_format_context->streams[audio_stream_index]
+                             ->time_base);
+            }
             packet->dts = packet->pts;
 
             if (p.second->stream_index == video_stream_index) {
