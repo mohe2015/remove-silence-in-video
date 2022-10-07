@@ -601,19 +601,19 @@ export int main() {
         video_encoding_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
       my_avcodec_open2(video_encoding_context, video_encoder);
-
-      std::cout
-          << "silence " << silence.first << "("
-          << (uint64_t)(silence.first /
-                        av_q2d(av_format_context->streams[video_stream_index]
-                                   ->time_base))
-          << ")"
-          << "-" << silence.second << "("
-          << (uint64_t)(silence.second /
-                        av_q2d(av_format_context->streams[video_stream_index]
-                                   ->time_base))
-          << ")" << std::endl;
-
+      /*
+            std::cout
+                << "silence " << silence.first << "("
+                << (uint64_t)(silence.first /
+                              av_q2d(av_format_context->streams[video_stream_index]
+                                         ->time_base))
+                << ")"
+                << "-" << silence.second << "("
+                << (uint64_t)(silence.second /
+                              av_q2d(av_format_context->streams[video_stream_index]
+                                         ->time_base))
+                << ")" << std::endl;
+      */
       // copy all frames from last rendered until start of this silence
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
           sorted_video(frames.lower_bound(
@@ -632,7 +632,7 @@ export int main() {
           if (p.second->stream_index == audio_stream_index ||
               p.second->stream_index == video_stream_index) {
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "copy original " << p.second->pts << std::endl;
+              // std::cout << "copy original " << p.second->pts << std::endl;
             }
 
             int stream_index =
@@ -648,7 +648,7 @@ export int main() {
             packet->dts = packet->pts;
 
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "copy moved " << packet->pts << std::endl;
+              // std::cout << "copy moved " << packet->pts << std::endl;
             }
             /*
                         av_packet_rescale_ts(
@@ -657,7 +657,7 @@ export int main() {
                             output_stream->time_base);
             */
             if (p.second->stream_index == video_stream_index) {
-              std::cout << "copy rescaled " << packet->pts << std::endl;
+              // std::cout << "copy rescaled " << packet->pts << std::endl;
             }
 
             packet->pos = -1;
@@ -679,10 +679,10 @@ export int main() {
 
       double last_keyframe = *keyframe_it;
       double frame_we_need = silence.second;
-
-      std::cout << "keyframe " << last_keyframe << "-" << frame_we_need
-                << std::endl;
-
+      /*
+            std::cout << "keyframe " << last_keyframe << "-" << frame_we_need
+                      << std::endl;
+      */
       // ffprobe c1_2.mp4
 
       std::vector<std::pair<std::pair<double, int64_t>, MyAVPacket>>
@@ -697,78 +697,84 @@ export int main() {
         throw std::string("not found!");
       }
 
-      int64_t silence_first_pts = just_before_it->second->pts;
-      int64_t silence_second_pts =
-          sorted_keyframe_gen.back().second->pts; // this is wrong?
+      if (!sorted_keyframe_gen.empty()) {
+        int64_t silence_first_pts = just_before_it->second->pts;
+        int64_t silence_second_pts =
+            sorted_keyframe_gen.back().second->pts; // this is wrong?
+                                                    /*
+                                                          std::cout
+                                                              << "silence_first " << silence_first_pts << "("
+                                                              << silence_first_pts *
+                                                                     av_q2d(
+                                                                         av_format_context->streams[video_stream_index]->time_base)
+                                                              << ")"
+                                                              << " silence_second " << silence_second_pts << "("
+                                                              << silence_second_pts *
+                                                                     av_q2d(
+                                                                         av_format_context->streams[video_stream_index]->time_base)
+                                                              << ")" << std::endl;
+                                                    */
+        // TODO FIXME maybe also just the subtracting here is bad?
+        pts_difference += silence_second_pts - silence_first_pts;
 
-      std::cout
-          << "silence_first " << silence_first_pts << "("
-          << silence_first_pts *
-                 av_q2d(
-                     av_format_context->streams[video_stream_index]->time_base)
-          << ")"
-          << " silence_second " << silence_second_pts << "("
-          << silence_second_pts *
-                 av_q2d(
-                     av_format_context->streams[video_stream_index]->time_base)
-          << ")" << std::endl;
+        // std::cout << "rendered-until " << rendered_until << std::endl;
 
-      // TODO FIXME maybe also just the subtracting here is bad?
-      pts_difference += silence_second_pts - silence_first_pts;
+        std::optional<MyAVFrame> last_video_frame;
+        avcodec_flush_buffers(video_codec_ctx.get());
+        for (auto p : sorted_keyframe_gen) {
+          if (p.second->stream_index == video_stream_index) {
+            MyAVPacket packet = my_av_packet_clone(p.second);
 
-      rendered_until = silence.second; //  TODO FIXME THIS IS THE CURRENT BUG
-                                       //  PLACE + 0.001 probably rounding bug?
+            my_avcodec_send_packet(video_codec_ctx, packet);
 
-      std::cout << "rendered-until " << rendered_until << std::endl;
-
-      std::optional<MyAVFrame> last_video_frame;
-      avcodec_flush_buffers(video_codec_ctx.get());
-      for (auto p : sorted_keyframe_gen) {
-        if (p.second->stream_index == video_stream_index) {
-          MyAVPacket packet = my_av_packet_clone(p.second);
-
-          my_avcodec_send_packet(video_codec_ctx, packet);
-
-          while (my_avcodec_receive_frame(
-              video_codec_ctx, video_frame)) { // another function that randomly
-                                               // calls unref on the frame
-            last_video_frame =
-                MyAVFrame(av_frame_clone(video_frame.get()), my_av_frame_free);
+            while (my_avcodec_receive_frame(
+                video_codec_ctx,
+                video_frame)) { // another function that randomly
+                                // calls unref on the frame
+              last_video_frame = MyAVFrame(av_frame_clone(video_frame.get()),
+                                           my_av_frame_free);
+            }
           }
+        }
+
+        if (!last_video_frame.has_value()) {
+          throw std::string("no last video frame found");
+        }
+
+        my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
+        my_avcodec_send_frame(video_encoding_context, nullptr);
+
+        MyAVPacket video_packet = my_av_packet_alloc();
+        while (
+            my_avcodec_receive_packet(video_encoding_context, video_packet)) {
+          // std::cout << "reencode original " << video_packet->pts <<
+          // std::endl;
+
+          // std::cout << "reencode diff " << pts_difference << std::endl;
+
+          video_packet->pos = -1;
+          video_packet->stream_index = 1;
+
+          video_packet->pts -= pts_difference;
+          video_packet->dts = video_packet->pts;
+
+          // std::cout << "reencode moved " << video_packet->pts << std::endl;
+          /*
+                  // seems like rescaling can produce the same output value for
+             different inputs because stupid av_packet_rescale_ts(
+                      video_packet.get(),
+                      av_format_context->streams[video_stream_index]->time_base,
+                      output_video_stream->time_base);
+          */
+          // std::cout << "reencode rescaled " << video_packet->pts <<
+          // std::endl;
+
+          my_av_interleaved_write_frame(output_format_context, video_packet);
         }
       }
 
-      if (!last_video_frame.has_value()) {
-        throw std::string("no last video frame found");
-      }
-
-      my_avcodec_send_frame(video_encoding_context, last_video_frame.value());
-      my_avcodec_send_frame(video_encoding_context, nullptr);
-
-      MyAVPacket video_packet = my_av_packet_alloc();
-      while (my_avcodec_receive_packet(video_encoding_context, video_packet)) {
-        std::cout << "reencode original " << video_packet->pts << std::endl;
-
-        std::cout << "reencode diff " << pts_difference << std::endl;
-
-        video_packet->pos = -1;
-        video_packet->stream_index = 1;
-
-        video_packet->pts -= pts_difference;
-        video_packet->dts = video_packet->pts;
-
-        std::cout << "reencode moved " << video_packet->pts << std::endl;
-        /*
-                // seems like rescaling can produce the same output value for
-           different inputs because stupid av_packet_rescale_ts(
-                    video_packet.get(),
-                    av_format_context->streams[video_stream_index]->time_base,
-                    output_video_stream->time_base);
-        */
-        std::cout << "reencode rescaled " << video_packet->pts << std::endl;
-
-        my_av_interleaved_write_frame(output_format_context, video_packet);
-      }
+      rendered_until = silence.second; //  TODO FIXME THIS IS THE CURRENT BUG
+                                       //  PLACE + 0.001 probably rounding bug?
     }
 
     my_av_write_trailer(output_format_context);
