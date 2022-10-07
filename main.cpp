@@ -717,8 +717,8 @@ export int main() {
 
       rendered_until = silence.second;
 
-      // 534000 >= 533279
-      pts_difference += silence.second - silence.first - 0.01;
+      // 3621756 >= 3621199
+      pts_difference += silence.second - silence.first - 0.04;
 
       // TODO FIXME do the same for the audio stream?
       // THIS IS THE CURRENT BUG SOURCE
